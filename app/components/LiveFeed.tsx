@@ -51,6 +51,7 @@ export default function LiveFeed({ provider, escrowAddress, reputationAddress, o
         // Job Posted
         const posted = await escrow.queryFilter(escrow.filters.JobPosted(), fromBlock, currentBlock);
         for (const log of posted) {
+          if (!("args" in log)) continue;
           const block = await log.getBlock();
           allEvents.push({
             id: `${log.transactionHash}-${log.index}`,
@@ -66,6 +67,7 @@ export default function LiveFeed({ provider, escrowAddress, reputationAddress, o
         // Job Accepted
         const accepted = await escrow.queryFilter(escrow.filters.JobAccepted(), fromBlock, currentBlock);
         for (const log of accepted) {
+          if (!("args" in log)) continue;
           const block = await log.getBlock();
           allEvents.push({
             id: `${log.transactionHash}-${log.index}`,
@@ -80,6 +82,7 @@ export default function LiveFeed({ provider, escrowAddress, reputationAddress, o
         // Job Completed
         const completed = await escrow.queryFilter(escrow.filters.JobCompleted(), fromBlock, currentBlock);
         for (const log of completed) {
+          if (!("args" in log)) continue;
           const block = await log.getBlock();
           allEvents.push({
             id: `${log.transactionHash}-${log.index}`,
@@ -93,6 +96,7 @@ export default function LiveFeed({ provider, escrowAddress, reputationAddress, o
         // Job Paid
         const paid = await escrow.queryFilter(escrow.filters.JobPaid(), fromBlock, currentBlock);
         for (const log of paid) {
+          if (!("args" in log)) continue;
           const block = await log.getBlock();
           allEvents.push({
             id: `${log.transactionHash}-${log.index}`,
@@ -108,6 +112,7 @@ export default function LiveFeed({ provider, escrowAddress, reputationAddress, o
         // Attested
         const attested = await reputation.queryFilter(reputation.filters.Attested(), fromBlock, currentBlock);
         for (const log of attested) {
+          if (!("args" in log)) continue;
           const block = await log.getBlock();
           allEvents.push({
             id: `${log.transactionHash}-${log.index}`,

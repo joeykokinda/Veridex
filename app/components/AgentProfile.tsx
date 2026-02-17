@@ -61,6 +61,7 @@ export default function AgentProfile({ provider, address, reputationAddress, esc
           currentBlock
         );
         for (const log of posted) {
+          if (!("args" in log)) continue;
           const block = await log.getBlock();
           history.push({
             jobId: Number(log.args[0]),
@@ -78,6 +79,7 @@ export default function AgentProfile({ provider, address, reputationAddress, esc
           currentBlock
         );
         for (const log of paid) {
+          if (!("args" in log)) continue;
           const block = await log.getBlock();
           const reward = ethers.formatEther(log.args[2]);
           earned += parseFloat(reward);
