@@ -1,14 +1,12 @@
 require("@nomicfoundation/hardhat-toolbox");
 
-/** @type {import('hardhat/config').HardhatUserConfig} */
 module.exports = {
   solidity: "0.8.24",
   networks: {
-    hedera: {
-      url: process.env.HEDERA_RPC_URL || "https://testnet.hashio.io/api",
-      accounts: process.env.HEDERA_PRIVATE_KEYS
-        ? process.env.HEDERA_PRIVATE_KEYS.split(",")
-        : [],
+    hedera_testnet: {
+      url: "https://testnet.hashio.io/api",
+      accounts: ["0x8fef27e316fb02c851c8e5cf82201d0cce54bf1459937844c732971e65caa62a"],
+      chainId: 296,
     },
   },
 };

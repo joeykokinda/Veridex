@@ -1,23 +1,23 @@
-import "dotenv/config";
+export const NETWORK = process.env.NETWORK || "hedera-testnet";
+export const RPC_URL = process.env.RPC_URL || "https://testnet.hashio.io/api";
+export const ESCROW_ADDRESS = process.env.ESCROW_ADDRESS || "0xF20bD9F3a66E2A11090C3cCc645368543873E270";
+export const REPUTATION_ADDRESS = process.env.REPUTATION_ADDRESS || "0xd8b68F31294e2D346810Bf3e3cD77593348BB89e";
 
-export const NETWORK = process.env.NETWORK || "local";
-export const RPC_URL =
-  NETWORK === "hedera"
-    ? process.env.HEDERA_RPC_URL || "https://testnet.hashio.io/api"
-    : process.env.RPC_URL || "http://localhost:8545";
+// Hedera testnet funded account for testing
+export const HEDERA_ACCOUNT_PRIVATE_KEY = process.env.HEDERA_PRIVATE_KEY || "0x8fef27e316fb02c851c8e5cf82201d0cce54bf1459937844c732971e65caa62a";
 
-export const ESCROW_ADDRESS = process.env.ESCROW_ADDRESS;
-export const REPUTATION_ADDRESS = process.env.REPUTATION_ADDRESS;
-
-// Hardhat default accounts (local only)
+// For local Hardhat testing, use these pre-funded accounts
 export const HARDHAT_ACCOUNTS = [
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
   "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
   "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
   "0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
+  "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a",
+  "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba",
+  "0x92db14e403b83dfe3df233f83dfa3a0d7096f21ca9b0d6d6b8d88b2b4ec1564e",
+  "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356",
+  "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97",
+  "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6",
+  "0xf214f2b2cd398c806f84e317254e0f0b801d0643303237d97a22a48e01628897",
+  "0x701b615bbdfb9de65240bc28bd21bbc0d996645a3dd57e7b12bc2bdf6f192c82",
 ];
-
-export const MIRROR_NODE_URL =
-  NETWORK === "hedera"
-    ? "https://testnet.mirrornode.hedera.com"
-    : null;

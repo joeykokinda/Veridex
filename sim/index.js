@@ -17,6 +17,7 @@ import {
   RPC_URL,
   ESCROW_ADDRESS,
   REPUTATION_ADDRESS,
+  HEDERA_ACCOUNT_PRIVATE_KEY,
   HARDHAT_ACCOUNTS,
   NETWORK,
 } from "./config.js";
@@ -206,9 +207,29 @@ async function main() {
   const reputation = new ethers.Contract(REPUTATION_ADDRESS, repABI, provider);
 
   const agents = [];
-  for (let i = 0; i < 12; i++) {
-    const wallet = new ethers.NonceManager(new ethers.Wallet(HARDHAT_ACCOUNTS[i], provider));
-    agents.push(new Agent(wallet, escrow, reputation, i));
+  
+  // Determine which accounts to use based on network
+  const isHedera = NETWORK.includes("hedera");
+  
+  if (isHedera) {
+    // For Hedera: use the main account + derived accounts
+    // For simplicity, we'll create multiple agents from the same account
+    // In production, you'd use different funded accounts
+    console.log("Using Hedera testnet - creating agents from main account\n");
+    for (let i = 0; i < 12; i++) {
+      // Derive different wallets by adding index to private key (simple approach)
+      // Note: In production, fund separate accounts
+      const baseKey = BigInt(HEDERA_ACCOUNT_PRIVATE_KEY);
+      const derivedKey = "0x" + (baseKey + BigInt(i)).toString(16).padStart(64, "0");
+      const wallet = new ethers.NonceManager(new ethers.Wallet(derivedKey, provider));
+      agents.push(new Agent(wallet, escrow, reputation, i));
+    }
+  } else {
+    // For local Hardhat: use pre-funded accounts
+    for (let i = 0; i < 12; i++) {
+      const wallet = new ethers.NonceManager(new ethers.Wallet(HARDHAT_ACCOUNTS[i], provider));
+      agents.push(new Agent(wallet, escrow, reputation, i));
+    }
   }
 
   console.log(`Initialized ${agents.length} autonomous agents\n`);
