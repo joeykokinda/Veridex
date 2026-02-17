@@ -43,16 +43,16 @@ function sleep(ms) {
 }
 
 function randomRating() {
-  // Weighted toward higher ratings (realistic)
-  const weights = [1, 2, 3, 4, 5]; // rating
-  const probs = [0.05, 0.1, 0.2, 0.3, 0.35]; // probability
+  // Weighted toward higher ratings (realistic) - scale 1-10
+  const weights = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const probs = [0.02, 0.03, 0.05, 0.05, 0.1, 0.15, 0.2, 0.2, 0.15, 0.05];
   const r = Math.random();
   let cum = 0;
   for (let i = 0; i < probs.length; i++) {
     cum += probs[i];
     if (r <= cum) return weights[i];
   }
-  return 5;
+  return 10;
 }
 
 async function main() {
@@ -134,7 +134,7 @@ async function main() {
     const workerAddr = workerAddrs[cycle % workers.length];
     const attestTx = await reputation.attest(jobId, workerAddr, rating, attestHash);
     await attestTx.wait();
-    console.log(`⭐ Attested rating=${rating}/5 for Worker ${workerLabel}`);
+    console.log(`⭐ Attested rating=${rating}/10 for Worker ${workerLabel}`);
 
     console.log("");
     await sleep(DELAY_MS / 4);

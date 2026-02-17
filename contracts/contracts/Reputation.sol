@@ -23,7 +23,7 @@ contract Reputation {
     }
 
     function attest(uint256 jobId, address agent, uint8 rating, bytes32 detailsHash) external {
-        require(rating >= 1 && rating <= 5, "Rating must be 1-5");
+        require(rating >= 1 && rating <= 10, "Rating must be 1-10");
 
         (address requester, address jobAgent, , JobBoardEscrow.Status status, , ) = jobBoard.jobs(jobId);
         require(status == JobBoardEscrow.Status.Paid, "Job not paid");

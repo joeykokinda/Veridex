@@ -139,7 +139,7 @@ export default function AgentProfile({ provider, address, reputationAddress, esc
             <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">
               <div className="text-xs text-slate-500 mb-1">Trust Score</div>
               <div className="text-lg font-semibold text-white">
-                ⭐ {avgRating.toFixed(1)}/5.0
+                ⭐ {avgRating.toFixed(1)}/10.0
               </div>
             </div>
             <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700">

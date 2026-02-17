@@ -124,7 +124,7 @@ export default function Leaderboard({ provider, reputationAddress, onAgentClick 
                   </div>
                   <div className="flex items-center gap-3 mt-1">
                     <div className="text-xs text-slate-400">
-                      ⭐ {score.avgRating.toFixed(1)}/5.0
+                      ⭐ {score.avgRating.toFixed(1)}/10.0
                     </div>
                     <div className="text-xs text-slate-500">
                       {score.jobCount} {score.jobCount === 1 ? "job" : "jobs"}

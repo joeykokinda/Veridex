@@ -329,7 +329,7 @@ export default function LiveFeed({ provider, escrowAddress, reputationAddress, o
             >
               {formatAddress(event.agent!)}
             </button>{" "}
-            rated {event.rating}/5 for job #{event.jobId}
+            rated {event.rating}/10 for job #{event.jobId}
           </>
         );
     }
