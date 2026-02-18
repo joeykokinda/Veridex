@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "On-chain identity for AI agents - ETHDenver 2026",
   "scripts": {
+    "setup:validate": "node scripts/setup/validate.js",
+    "setup:convert-key": "node scripts/setup/convert-hedera-key.js",
+    "setup:generate-wallet": "node scripts/setup/generate-agent-wallet.js",
+    "setup:check-balance": "node scripts/setup/check-balance.js",
     "deploy": "hardhat run scripts/deploy.js --network hedera-testnet",
     "register": "node scripts/agent/register.js",
     "status": "node scripts/agent/check-status.js",

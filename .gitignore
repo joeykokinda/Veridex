@@ -1,20 +1,38 @@
+# Dependencies
 node_modules/
+**/node_modules/
+
+# Environment
 .env
+
+# Hardhat build artifacts
 cache/
 artifacts/
+**/cache/
+**/artifacts/
 deployments.json
 coverage/
 coverage.json
 typechain/
 typechain-types/
 
-# Hardhat files
-cache
-artifacts
+# Build directories
+.next/
+dist/
+build/
 
 # IDEs
-.idea
-.vscode
+.idea/
+.vscode/
+*.swp
+*.swo
 
 # macOS
 .DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temporary files
+CLEANUP_INSTRUCTIONS.txt
