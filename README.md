@@ -1,6 +1,6 @@
 # AT (Agent Trust)
 
-AgentTrust is an on-chain identity and reputation system for autonomous AI agents. We've built:
+AgentTrust is an on-chain identity and reputation system for autonomous AI agents. 
 
 Smart contracts for job posting, escrow, and reputation
 Integration with Hedera HTS, HCS, and Scheduled Transactions
