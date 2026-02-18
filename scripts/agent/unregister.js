@@ -11,12 +11,12 @@ const AGENT_IDENTITY_ABI = [
 
 async function main() {
   if (!process.env.AGENT_ALPHA_PRIVATE_KEY) {
-    console.error("❌ Error: AGENT_ALPHA_PRIVATE_KEY not found in .env");
+    console.error("ERROR: AGENT_ALPHA_PRIVATE_KEY not found in .env");
     process.exit(1);
   }
 
   if (!process.env.AGENT_IDENTITY_CONTRACT) {
-    console.error("❌ Error: AGENT_IDENTITY_CONTRACT not found in .env");
+    console.error("ERROR: AGENT_IDENTITY_CONTRACT not found in .env");
     process.exit(1);
   }
 
@@ -30,30 +30,30 @@ async function main() {
 
   const agentAddress = wallet.address;
 
-  console.log("🤖 Agent Address:", agentAddress);
+  console.log("Agent Address:", agentAddress);
 
   try {
     const isRegistered = await contract.isRegistered(agentAddress);
 
     if (!isRegistered) {
-      console.log("❌ Agent is not registered");
+      console.log("ERROR: Agent is not registered");
       process.exit(1);
     }
 
-    console.log("📝 Unregistering agent...");
+    console.log("Unregistering agent...");
     
     const tx = await contract.unregister();
-    console.log("✅ Transaction:", tx.hash);
-    console.log("⏱️  Waiting for confirmation...");
+    console.log("Transaction:", tx.hash);
+    console.log("Waiting for confirmation...");
 
     await tx.wait();
 
-    console.log("✅ Agent unregistered!");
-    console.log("\n💡 Note: Your data is preserved on-chain.");
-    console.log("   You can re-register anytime with 'npm run register'\n");
+    console.log("Agent unregistered!");
+    console.log("\nNote: Your data is preserved on-chain.");
+    console.log("You can re-register anytime with 'npm run register'\n");
 
   } catch (error) {
-    console.error("❌ Error:", error.message);
+    console.error("ERROR:", error.message);
     process.exit(1);
   }
 }

@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 async function main() {
-  console.log("🚀 Deploying AgentIdentity to Hedera testnet...\n");
+  console.log("Deploying AgentIdentity to Hedera testnet...\n");
 
   // Deploy the contract
   const AgentIdentity = await hre.ethers.getContractFactory("AgentIdentity");
@@ -14,14 +14,14 @@ async function main() {
 
   const contractAddress = await agentIdentity.getAddress();
 
-  console.log("✅ AgentIdentity deployed!\n");
-  console.log("📋 Contract Details:");
+  console.log("AgentIdentity deployed!\n");
+  console.log("Contract Details:");
   console.log("   Address:", contractAddress);
   console.log("   Network: Hedera Testnet");
   console.log("   Chain ID: 296");
-  console.log("\n🔗 View on HashScan:");
+  console.log("\nView on HashScan:");
   console.log(`   https://hashscan.io/testnet/contract/${contractAddress}`);
-  console.log("\n📝 Add this to your .env file:");
+  console.log("\nAdd this to your .env file:");
   console.log(`   AGENT_IDENTITY_CONTRACT=${contractAddress}`);
 
   // Save deployment info
@@ -40,7 +40,7 @@ async function main() {
     JSON.stringify(deploymentData, null, 2)
   );
 
-  console.log("\n💾 Deployment info saved to deployments.json");
+  console.log("\nDeployment info saved to deployments.json");
 }
 
 main()

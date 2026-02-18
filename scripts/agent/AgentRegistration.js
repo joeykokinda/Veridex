@@ -46,16 +46,16 @@ class AgentRegistration {
   async register(name, description, capabilities) {
     // Check if already registered
     if (await this.isRegistered()) {
-      console.log("⚠️  Already registered");
+      console.log("Already registered");
       return await this.getProfile();
     }
 
     console.log("Registering agent on-chain...");
     const tx = await this.contract.register(name, description, capabilities);
-    console.log("✅ Transaction:", tx.hash);
+    console.log("Transaction:", tx.hash);
     
     await tx.wait();
-    console.log("✅ Registration complete!");
+    console.log("Registration complete!");
     
     return await this.getProfile();
   }
@@ -65,12 +65,12 @@ class AgentRegistration {
       throw new Error("Agent not registered");
     }
 
-    console.log("📝 Unregistering agent...");
+    console.log("Unregistering agent...");
     const tx = await this.contract.unregister();
-    console.log("✅ Transaction:", tx.hash);
+    console.log("Transaction:", tx.hash);
     
     await tx.wait();
-    console.log("✅ Agent unregistered!");
+    console.log("Agent unregistered!");
     
     return { success: true, address: this.wallet.address };
   }
@@ -80,12 +80,12 @@ class AgentRegistration {
       throw new Error("Agent already active");
     }
 
-    console.log("📝 Reactivating agent...");
+    console.log("Reactivating agent...");
     const tx = await this.contract.reactivate();
-    console.log("✅ Transaction:", tx.hash);
+    console.log("Transaction:", tx.hash);
     
     await tx.wait();
-    console.log("✅ Agent reactivated!");
+    console.log("Agent reactivated!");
     
     return await this.getProfile();
   }
@@ -98,7 +98,7 @@ module.exports = { AgentRegistration };
 if (require.main === module) {
   (async () => {
     if (!process.env.AGENT_ALPHA_PRIVATE_KEY || !process.env.AGENT_IDENTITY_CONTRACT) {
-      console.error("❌ Missing env vars: AGENT_ALPHA_PRIVATE_KEY, AGENT_IDENTITY_CONTRACT");
+      console.error("ERROR: Missing env vars: AGENT_ALPHA_PRIVATE_KEY, AGENT_IDENTITY_CONTRACT");
       process.exit(1);
     }
 
@@ -113,10 +113,10 @@ if (require.main === module) {
 
     try {
       const profile = await service.register(name, description, capabilities);
-      console.log("\n📋 Agent Profile:");
+      console.log("\nAgent Profile:");
       console.log(JSON.stringify(profile, null, 2));
     } catch (error) {
-      console.error("❌ Error:", error.message);
+      console.error("ERROR:", error.message);
       process.exit(1);
     }
   })();

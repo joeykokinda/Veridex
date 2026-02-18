@@ -2,8 +2,9 @@
 node_modules/
 **/node_modules/
 
-# Environment
+# Environment & Secrets
 .env
+.agent-wallet.json
 
 # Hardhat build artifacts
 cache/

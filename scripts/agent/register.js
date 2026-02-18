@@ -14,13 +14,13 @@ async function main() {
 
   // Check required environment variables
   if (!process.env.AGENT_ALPHA_PRIVATE_KEY) {
-    console.error("❌ Error: AGENT_ALPHA_PRIVATE_KEY not found in .env");
+    console.error("ERROR: AGENT_ALPHA_PRIVATE_KEY not found in .env");
     process.exit(1);
   }
 
   if (!process.env.AGENT_IDENTITY_CONTRACT) {
-    console.error("❌ Error: AGENT_IDENTITY_CONTRACT not found in .env");
-    console.log("💡 Deploy the contract first: npm run deploy");
+    console.error("ERROR: AGENT_IDENTITY_CONTRACT not found in .env");
+    console.log("Deploy the contract first: npm run deploy");
     process.exit(1);
   }
 
@@ -37,21 +37,21 @@ async function main() {
 
   const agentAddress = wallet.address;
 
-  console.log("🤖 Agent Address:", agentAddress);
-  console.log("📝 Checking registration status...\n");
+  console.log("Agent Address:", agentAddress);
+  console.log("Checking registration status...\n");
 
   try {
     // Check if already registered
     const isRegistered = await contract.isRegistered(agentAddress);
 
     if (isRegistered) {
-      console.log("ℹ️  Agent is already registered!\n");
+      console.log("Agent is already registered!\n");
       
       // Fetch and display existing profile
       const agent = await contract.getAgent(agentAddress);
       const registeredDate = new Date(Number(agent.registeredAt) * 1000);
       
-      console.log("✅ Registered Agent Profile:");
+      console.log("Registered Agent Profile:");
       console.log("   Name:", agent.name);
       console.log("   Description:", agent.description);
       console.log("   Capabilities:", agent.capabilities);
@@ -62,7 +62,7 @@ async function main() {
     }
 
     // Register the agent
-    console.log("📝 Registering on blockchain...");
+    console.log("Registering on blockchain...");
     
     const tx = await contract.register(
       agentName,
@@ -70,20 +70,20 @@ async function main() {
       "Smart contract interaction, autonomous decision making, blockchain transactions"
     );
 
-    console.log("✅ Transaction:", tx.hash);
-    console.log("🔗 HashScan:", `https://hashscan.io/testnet/transaction/${tx.hash}`);
-    console.log("⏱️  Waiting for confirmation...");
+    console.log("Transaction:", tx.hash);
+    console.log("HashScan:", `https://hashscan.io/testnet/transaction/${tx.hash}`);
+    console.log("Waiting for confirmation...");
 
     // Wait for transaction confirmation
     await tx.wait();
 
-    console.log("✅ Registration complete!\n");
+    console.log("Registration complete!\n");
 
     // Fetch and display the new profile
     const agent = await contract.getAgent(agentAddress);
     const registeredDate = new Date(Number(agent.registeredAt) * 1000);
 
-    console.log("📋 Your Agent Profile:");
+    console.log("Your Agent Profile:");
     console.log("   Name:", agent.name);
     console.log("   Description:", agent.description);
     console.log("   Capabilities:", agent.capabilities);
@@ -91,7 +91,7 @@ async function main() {
     console.log("   Address:", agentAddress);
 
   } catch (error) {
-    console.error("❌ Error:", error.message);
+    console.error("ERROR:", error.message);
     process.exit(1);
   }
 }
