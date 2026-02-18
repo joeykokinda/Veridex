@@ -1,0 +1,26 @@
+{
+  "name": "agenttrust",
+  "version": "1.0.0",
+  "description": "On-chain identity for AI agents - ETHDenver 2026",
+  "scripts": {
+    "deploy": "hardhat run scripts/deploy.js --network hedera-testnet",
+    "register": "node scripts/agent/register.js",
+    "status": "node scripts/agent/check-status.js",
+    "test": "hardhat test"
+  },
+  "keywords": [
+    "hedera",
+    "ai-agents",
+    "blockchain",
+    "ethdenver"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@hashgraph/sdk": "^2.80.0",
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.11.1",
+    "hardhat": "^2.20.1"
+  }
+}
