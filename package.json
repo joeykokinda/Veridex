@@ -12,6 +12,7 @@
     "quick-register": "node scripts/agent/quick-register.js",
     "unregister": "node scripts/agent/unregister.js",
     "status": "node scripts/agent/check-status.js",
+    "update-stats": "node scripts/agent/update-stats.js",
     "api": "node scripts/agent/api-server.js",
     "test": "hardhat test"
   },
