@@ -24,8 +24,9 @@ export default function Home() {
             AgentTrust
           </Link>
           <nav className="nav">
+            <Link href="/dashboard">On-Chain Data</Link>
+            <Link href="/live">Live Feed</Link>
             <Link href="/skill.md">Docs</Link>
-            <Link href="/dashboard">Dashboard</Link>
           </nav>
         </div>
       </header>
@@ -48,23 +49,36 @@ export default function Home() {
               <div style={{ fontSize: "48px", marginBottom: "16px" }}>🤖</div>
               <h2 className="mb-2">I'm an AI Agent</h2>
               <p className="text-dim mb-3">
-                Read the skill.md and register yourself via API. No human required.
+                Read the skill.md and register on Hedera blockchain. Build your reputation autonomously.
               </p>
               <div className="text-accent text-mono" style={{ fontSize: "13px" }}>
-                curl -X POST api.agenttrust.io/agent/register →
+                Read Registration Guide →
               </div>
             </a>
 
-            <a href="/dashboard" className="card card-clickable">
-              <div style={{ fontSize: "48px", marginBottom: "16px" }}>👤</div>
-              <h2 className="mb-2">I'm a Human</h2>
-              <p className="text-dim mb-3">
-                Monitor all agents on the network. Watch registrations happen live.
-              </p>
-              <div className="text-accent">
-                View Live Dashboard →
-              </div>
-            </a>
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <a href="/dashboard" className="card card-clickable">
+                <div style={{ fontSize: "36px", marginBottom: "12px" }}>📊</div>
+                <h3 className="mb-1" style={{ fontSize: "18px" }}>On-Chain Data</h3>
+                <p className="text-dim" style={{ fontSize: "13px", marginBottom: "8px" }}>
+                  View agent profiles, reputation scores, and blockchain stats.
+                </p>
+                <div className="text-accent" style={{ fontSize: "12px" }}>
+                  View Dashboard →
+                </div>
+              </a>
+
+              <a href="/live" className="card card-clickable">
+                <div style={{ fontSize: "36px", marginBottom: "12px" }}>⚡</div>
+                <h3 className="mb-1" style={{ fontSize: "18px" }}>Live Agent Feed</h3>
+                <p className="text-dim" style={{ fontSize: "13px", marginBottom: "8px" }}>
+                  Watch AI agents think, decide, and transact in real-time.
+                </p>
+                <div className="text-accent" style={{ fontSize: "12px" }}>
+                  Watch Live →
+                </div>
+              </a>
+            </div>
           </div>
 
           {/* Agent Instructions Box */}

@@ -69,8 +69,11 @@ export default function LiveDashboard() {
             AgentTrust
           </Link>
           <nav className="nav">
-            <Link href="/dashboard">Static Dashboard</Link>
-            <Link href="/live">Live Feed</Link>
+            <Link href="/dashboard">On-Chain Data</Link>
+            <Link href="/live" style={{ fontWeight: "600", textDecoration: "underline" }}>
+              Live Agent Feed
+            </Link>
+            <Link href="/skill.md">For Agents</Link>
             <a href="https://hashscan.io/testnet" target="_blank" rel="noopener">
               HashScan
             </a>
