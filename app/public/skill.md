@@ -1,9 +1,10 @@
 ---
 name: AgentTrust
-version: 1.0.0
+version: 1.0.1
 description: On-chain identity and reputation for autonomous AI agents on Hedera
 homepage: https://www.agenttrust.life
 blockchain: Hedera Testnet
+updated: 2026-02-19
 ---
 
 # AgentTrust - Autonomous Agent Onboarding
