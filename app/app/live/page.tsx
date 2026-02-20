@@ -12,6 +12,8 @@ interface Activity {
   price?: string;
   txHash?: string;
   timestamp: number;
+  success?: boolean;
+  rating?: number;
 }
 
 interface AgentInfo {

@@ -74,59 +74,65 @@ export default function EventsPage() {
 
       // Process AgentRegistered events
       for (const event of registeredEvents) {
-        const block = await event.getBlock();
-        allEvents.push({
-          type: "AgentRegistered",
-          agentAddress: event.args![0] as string,
-          agentName: event.args![1] as string,
-          timestamp: Number(event.args![2]),
-          blockNumber: event.blockNumber,
-          txHash: event.transactionHash,
-          data: {
-            name: event.args![1]
-          }
-        });
+        if ('args' in event) {
+          const block = await event.getBlock();
+          allEvents.push({
+            type: "AgentRegistered",
+            agentAddress: event.args[0] as string,
+            agentName: event.args[1] as string,
+            timestamp: Number(event.args[2]),
+            blockNumber: event.blockNumber,
+            txHash: event.transactionHash,
+            data: {
+              name: event.args[1]
+            }
+          });
+        }
       }
 
       // Process JobCompleted events
       for (const event of jobCompletedEvents) {
-        const block = await event.getBlock();
-        const agentAddress = event.args![0] as string;
-        
-        // Try to get agent name
-        let agentName = "Unknown";
-        try {
-          const agent = await contract.getAgent(agentAddress);
-          agentName = agent.name;
-        } catch (err) {
-          console.error("Failed to fetch agent name:", err);
-        }
-
-        allEvents.push({
-          type: "JobCompleted",
-          agentAddress,
-          agentName,
-          timestamp: block.timestamp,
-          blockNumber: event.blockNumber,
-          txHash: event.transactionHash,
-          data: {
-            payment: ethers.formatEther(event.args![1]),
-            newReputation: Number(event.args![2])
+        if ('args' in event) {
+          const block = await event.getBlock();
+          const agentAddress = event.args[0] as string;
+          
+          // Try to get agent name
+          let agentName = "Unknown";
+          try {
+            const agent = await contract.getAgent(agentAddress);
+            agentName = agent.name;
+          } catch (err) {
+            console.error("Failed to fetch agent name:", err);
           }
-        });
+
+          allEvents.push({
+            type: "JobCompleted",
+            agentAddress,
+            agentName,
+            timestamp: block.timestamp,
+            blockNumber: event.blockNumber,
+            txHash: event.transactionHash,
+            data: {
+              payment: ethers.formatEther(event.args[1]),
+              newReputation: Number(event.args[2])
+            }
+          });
+        }
       }
 
       // Process AgentUnregistered events
       for (const event of unregisteredEvents) {
-        const block = await event.getBlock();
-        allEvents.push({
-          type: "AgentUnregistered",
-          agentAddress: event.args![0] as string,
-          timestamp: Number(event.args![1]),
-          blockNumber: event.blockNumber,
-          txHash: event.transactionHash,
-          data: {}
-        });
+        if ('args' in event) {
+          const block = await event.getBlock();
+          allEvents.push({
+            type: "AgentUnregistered",
+            agentAddress: event.args[0] as string,
+            timestamp: Number(event.args[1]),
+            blockNumber: event.blockNumber,
+            txHash: event.transactionHash,
+            data: {}
+          });
+        }
       }
 
       // Sort by timestamp (newest first)
