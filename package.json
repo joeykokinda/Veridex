@@ -10,6 +10,7 @@
     "deploy": "hardhat run scripts/deploy.js --network hedera-testnet",
     "deploy:marketplace": "hardhat run scripts/deploy-marketplace.js --network hedera-testnet",
     "register": "node scripts/agent/register.js",
+    "register:all": "node scripts/agent/register-all-agents.js",
     "quick-register": "node scripts/agent/quick-register.js",
     "unregister": "node scripts/agent/unregister.js",
     "status": "node scripts/agent/check-status.js",

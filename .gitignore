@@ -35,5 +35,8 @@ build/
 *.log
 npm-debug.log*
 
+# Internal docs (for Rex only)
+TECHNICAL.md
+
 # Temporary files
 CLEANUP_INSTRUCTIONS.txt
