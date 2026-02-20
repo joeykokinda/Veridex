@@ -1151,6 +1151,30 @@ RESPOND WITH VALID JSON ONLY (no markdown):
           continue;
         }
 
+        // Agent is not active — try reactivating first (preserves rep, avoids reset)
+        try {
+          const reactResult = await this.toolGateway.execute({
+            idempotencyKey: `reactivate-${name}-${agent.wallet.address}`,
+            agentAddress: agent.wallet.address,
+            agentPrivateKey: agent.wallet.privateKey,
+            tool: "reactivateAgent",
+            params: {}
+          });
+          console.log(`Reactivated ${name}: ${reactResult.txHash}`);
+          this._addActivity({
+            type: "action",
+            agent: name,
+            action: "registered",
+            content: `${name} reactivated on AgentTrust (reputation preserved)`,
+            txHash: reactResult.txHash,
+            timestamp: Date.now()
+          });
+          continue; // Skip fresh registration below
+        } catch (reactivateErr) {
+          // Agent was never registered (registeredAt == 0), fall through to fresh register
+          console.log(`${name} not previously registered, registering fresh...`);
+        }
+
         // Parse display name and capabilities from personality frontmatter
         const content = agent.personality.fullContent;
         const lines = content.split("\n");
@@ -1289,8 +1313,7 @@ RESPOND WITH VALID JSON ONLY (no markdown):
     this.jobDescriptions.clear();
     this.lastJobType = "art";
     console.log("\nOrchestrator stopped");
-    // Unregister agents in background
-    this.unregisterAllAgents().catch(err => console.error("Unregister error:", err));
+    // Note: agents stay registered on-chain so the marketplace can always track reputation
   }
 }
 

@@ -16,6 +16,7 @@ const path = require("path");
 const OLD_IDENTITY_ABI = [
   "function register(string name, string description, string capabilities) external",
   "function unregister() external",
+  "function reactivate() external",
   "function isRegistered(address) external view returns (bool)",
   "function getAgent(address) external view returns (tuple(string name, string description, string capabilities, uint256 registeredAt, bool active, uint256 jobsCompleted, uint256 jobsFailed, uint256 totalEarned, uint256 reputationScore, uint256 totalRatings))",
   "function updateAgentStats(address agentAddress, uint256 payment, uint256 rating, bool success) external",
@@ -183,6 +184,9 @@ class ToolGateway {
         case "registerVerifiedAgent":
           result = await this._registerVerifiedAgent(wallet, params);
           break;
+        case "reactivateAgent":
+          result = await this._reactivateAgent(wallet);
+          break;
         case "unregisterAgent":
           result = await this._unregisterAgent(wallet);
           break;
@@ -342,9 +346,11 @@ class ToolGateway {
     const openIds = await this.marketplaceContract.getOpenJobs();
 
     // Also scan for Assigned/Delivered jobs (contract only indexes Open state)
+    // Only scan the last 30 jobs — Assigned/Delivered jobs won't be older than that
     const jobCounter = await this.marketplaceContract.jobCounter();
     const allActiveIds = new Set(openIds.map(id => id.toString()));
-    for (let i = 1; i <= Number(jobCounter); i++) {
+    const startId = Math.max(1, Number(jobCounter) - 30);
+    for (let i = startId; i <= Number(jobCounter); i++) {
       allActiveIds.add(i.toString());
     }
 
@@ -425,6 +431,18 @@ class ToolGateway {
     return {
       txHash: receipt.hash,
       data: { registered: true, verified: true }
+    };
+  }
+
+  async _reactivateAgent(wallet) {
+    // Reactivate a previously registered agent — sets active=true without resetting stats
+    // Use the OLD identity contract so marketplace can track reputation
+    const identity = this.identityContract.connect(wallet);
+    const tx = await identity.reactivate();
+    const receipt = await tx.wait();
+    return {
+      txHash: receipt.hash,
+      data: { reactivated: true, registered: true }
     };
   }
 
