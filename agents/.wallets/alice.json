@@ -1,4 +1,6 @@
 {
-  "privateKey": "0xee45aa8abc203a3f517313c9d9cd6f5bf2c474c5ae3685d3bb108bc1a0b2bf45",
-  "address": "0xFa8c1d2B8602b8F43e27Ed59C8611862c26c1DfF"
+  "name": "Alice",
+  "privateKey": "0x241230c03eeaba719205c016f19d5e4fac7065bddda10c72d0f5ddd675611e44",
+  "address": "0x93503b299127881D0d663401dF7C2892b737bbab",
+  "createdAt": "2026-02-20T00:45:47.999Z"
 }

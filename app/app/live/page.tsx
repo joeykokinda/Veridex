@@ -62,13 +62,13 @@ export default function LiveDashboard() {
       const res = await fetch(`${ACTIVITY_API}/api/control/start`, { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        alert("✅ Simulation started!");
+        alert("Simulation started!");
         await checkSimStatus();
       } else {
-        alert("❌ " + data.message);
+        alert("Error: " + data.message);
       }
     } catch (error) {
-      alert("❌ Failed to start simulation");
+      alert("Failed to start simulation");
     }
     setActionLoading(false);
   };
@@ -80,13 +80,13 @@ export default function LiveDashboard() {
       const res = await fetch(`${ACTIVITY_API}/api/control/stop`, { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        alert("🛑 Simulation stopped!");
+        alert("Simulation stopped!");
         await checkSimStatus();
       } else {
-        alert("❌ " + data.message);
+        alert("Error: " + data.message);
       }
     } catch (error) {
-      alert("❌ Failed to stop simulation");
+      alert("Failed to stop simulation");
     }
     setActionLoading(false);
   };
@@ -100,11 +100,11 @@ export default function LiveDashboard() {
       const res = await fetch(`${ACTIVITY_API}/api/control/start`, { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        alert("🔄 Simulation restarted!");
+        alert("Simulation restarted!");
         await checkSimStatus();
       }
     } catch (error) {
-      alert("❌ Failed to restart simulation");
+      alert("Failed to restart simulation");
     }
     setActionLoading(false);
   };

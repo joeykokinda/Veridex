@@ -441,6 +441,11 @@ a:hover {
   .nav {
     gap: 20px;
   }
+
+  /* Make live demo section single column on mobile */
+  [style*="grid-template-columns: 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 @media (max-width: 640px) {

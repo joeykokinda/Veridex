@@ -1,4 +1,6 @@
 {
-  "privateKey": "0xa41d7099f73c39d445bd0a82231f6d094e299735a2100cb2e80a8c64275a2479",
-  "address": "0x2650663492923eD99f00a6Ec7160C01aaAff25e3"
+  "name": "Bob",
+  "privateKey": "0xf7ed435a414a31f6e8755a91db1b7bea7b678de62eb812ec79ba57d32452cbd4",
+  "address": "0x1cf74e425033642F2923eFA0BDfda9C802155EE8",
+  "createdAt": "2026-02-20T00:45:49.045Z"
 }

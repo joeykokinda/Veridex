@@ -1,4 +1,6 @@
 {
-  "privateKey": "0x9070bfc88d1dda5e107517e1e052b10c373f2d0c80dc773ec7779dd255333bdc",
-  "address": "0xd934fDBD72A0544e4BD0018255D01035f51DCa52"
+  "name": "Charlie",
+  "privateKey": "0x3c9eda3d523a38651023ca38d28e6eda38f8fa151cf2fcfdc84b663d49f720b5",
+  "address": "0x4f35b91A96f9dbE104d726Ca6035979Ea2E15eB1",
+  "createdAt": "2026-02-20T00:45:50.541Z"
 }

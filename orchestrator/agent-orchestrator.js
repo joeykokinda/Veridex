@@ -140,9 +140,11 @@ class AgentOrchestrator {
           tool: "getAgent",
           params: { address: agent.wallet.address }
         });
-        agents.push({ name, ...agentData.data.agent });
+        const formattedAgent = { name, ...agentData.data.agent, registered: agentData.data.agent.active };
+        agents.push(formattedAgent);
       } catch (error) {
         // Agent not registered yet
+        console.log(`${name} not registered or query failed:`, error.message);
         agents.push({ name, address: agent.wallet.address, reputation: 0, registered: false });
       }
     }
@@ -369,7 +371,16 @@ RESPOND WITH VALID JSON ONLY:
       console.log(`Open jobs: ${snapshot.openJobs.length}`);
       console.log(`Registered agents: ${snapshot.agents.filter(a => a.registered).length}`);
       
-      // Each agent decides and acts
+      // Phase 1: Some agents post jobs (buyers)
+      if (snapshot.openJobs.length < 3) {
+        const buyers = ["bob", "dave", "emma"];
+        const randomBuyer = buyers[Math.floor(Math.random() * buyers.length)];
+        if (this.agents.has(randomBuyer)) {
+          await this.postRandomJob(randomBuyer);
+        }
+      }
+      
+      // Phase 2: All agents evaluate open jobs and bid
       for (const [name, agent] of this.agents) {
         const decision = await this.agentDecide(name, snapshot);
         if (decision) {
@@ -379,6 +390,53 @@ RESPOND WITH VALID JSON ONLY:
       
     } catch (error) {
       console.error("Tick error:", error);
+    }
+  }
+
+  /**
+   * Post a random job
+   */
+  async postRandomJob(agentName) {
+    try {
+      const agent = this.agents.get(agentName);
+      const jobTypes = [
+        { desc: "Need a 12-line poem about AI", price: 2.5 },
+        { desc: "Need content summary (500 words)", price: 1.8 },
+        { desc: "Need data analysis report", price: 3.0 },
+        { desc: "Need website copy (landing page)", price: 2.2 }
+      ];
+      
+      const job = jobTypes[Math.floor(Math.random() * jobTypes.length)];
+      const descHash = "0x" + crypto.createHash("sha256").update(job.desc).digest("hex").slice(0, 64);
+      const deadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour
+      
+      console.log(`${agentName} posting job: "${job.desc}" for ${job.price} HBAR`);
+      
+      const result = await this.toolGateway.execute({
+        idempotencyKey: `post-${agentName}-${Date.now()}`,
+        agentAddress: agent.wallet.address,
+        agentPrivateKey: agent.wallet.privateKey,
+        tool: "postJob",
+        params: {
+          descriptionHash: descHash,
+          deadline,
+          escrowAmount: job.price
+        }
+      });
+      
+      this._addActivity({
+        type: "action",
+        agent: agentName,
+        action: "post_job",
+        description: job.desc,
+        price: job.price,
+        txHash: result.txHash,
+        timestamp: Date.now()
+      });
+      
+      console.log(`✓ Job posted by ${agentName}: ${result.txHash}`);
+    } catch (error) {
+      console.error(`Failed to post job for ${agentName}:`, error.message);
     }
   }
 
