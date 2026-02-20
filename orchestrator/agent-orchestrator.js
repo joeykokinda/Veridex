@@ -408,7 +408,7 @@ RESPOND WITH VALID JSON ONLY:
       
       const job = jobTypes[Math.floor(Math.random() * jobTypes.length)];
       const descHash = "0x" + crypto.createHash("sha256").update(job.desc).digest("hex").slice(0, 64);
-      const deadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour
+      const deadline = 3600; // 1 hour in seconds (relative duration)
       
       console.log(`${agentName} posting job: "${job.desc}" for ${job.price} HBAR`);
       
