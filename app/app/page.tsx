@@ -26,6 +26,7 @@ export default function Home() {
           <nav className="nav">
             <Link href="/dashboard">On-Chain Data</Link>
             <Link href="/live">Live Feed</Link>
+            <Link href="/events">Events</Link>
             <Link href="/skill.md">Docs</Link>
           </nav>
         </div>
@@ -142,6 +143,21 @@ export default function Home() {
                 </p>
                 <div className="text-accent" style={{ fontSize: "12px" }}>
                   Watch Live →
+                </div>
+              </Link>
+
+              <Link href="/events" className="card card-clickable">
+                <div style={{ marginBottom: "12px" }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--accent)" }}>
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                </div>
+                <h3 className="mb-1" style={{ fontSize: "18px" }}>Blockchain Events</h3>
+                <p className="text-dim" style={{ fontSize: "13px", marginBottom: "8px" }}>
+                  See every registration and on-chain interaction in real-time.
+                </p>
+                <div className="text-accent" style={{ fontSize: "12px" }}>
+                  View Events →
                 </div>
               </Link>
             </div>

@@ -406,14 +406,6 @@ RESPOND WITH VALID JSON ONLY:
    */
   async handleBidding(job, snapshot) {
     // Get job details including existing bids
-    const jobDetails = await this.toolGateway.execute({
-      idempotencyKey: `job-${job.id}-${Date.now()}`,
-      agentAddress: "0x0000000000000000000000000000000000000000",
-      agentPrivateKey: this.config.observerKey,
-      tool: "getJob",
-      params: { jobId: job.id }
-    });
-
     const bids = await this.toolGateway.execute({
       idempotencyKey: `bids-${job.id}-${Date.now()}`,
       agentAddress: "0x0000000000000000000000000000000000000000",
@@ -422,12 +414,17 @@ RESPOND WITH VALID JSON ONLY:
       params: { jobId: job.id }
     });
 
-    // If poster hasn't accepted a bid yet and there are bids, maybe accept one
-    if (bids.data.bids.length > 0 && Math.random() < 0.4) {
-      const posterAgent = this.agents.get(snapshot.agents.find(a => a.address === job.poster)?.name);
-      if (posterAgent) {
-        await this.acceptBestBid(posterAgent, job, bids.data.bids);
-        return; // Skip new bidding this tick
+    // Poster decides whether to accept a bid (using AI)
+    if (bids.data.bids.length > 0) {
+      const posterData = snapshot.agents.find(a => a.address === job.poster);
+      const posterAgent = this.agents.get(posterData?.name);
+      
+      if (posterAgent && posterData) {
+        const decision = await this.decideAcceptBid(posterData.name, job, bids.data.bids, snapshot);
+        if (decision && decision.decision === "accept") {
+          await this.executeBidAcceptance(posterAgent, job, decision.bidId);
+          return; // Job now assigned, skip new bidding
+        }
       }
     }
 
@@ -436,7 +433,11 @@ RESPOND WITH VALID JSON ONLY:
       const agentData = snapshot.agents.find(a => a.name === name);
       if (!agentData || !agentData.registered || agentData.address === job.poster) continue;
 
-      // Agents decide whether to bid
+      // Check if already bid on this job
+      const alreadyBid = bids.data.bids.some(b => b.bidder === agentData.address);
+      if (alreadyBid) continue;
+
+      // Agents decide whether to bid using AI
       const decision = await this.decideBid(name, job, snapshot);
       if (decision && decision.decision === "bid") {
         await this.executeBid(name, job, decision);
@@ -445,18 +446,88 @@ RESPOND WITH VALID JSON ONLY:
   }
 
   /**
-   * Accept the best bid
+   * AI decision: Should poster accept a bid?
    */
-  async acceptBestBid(posterAgent, job, bids) {
-    // Choose lowest bid (or highest reputation bidder)
-    const bestBid = bids.reduce((best, bid) => 
-      !best || parseFloat(bid.price) < parseFloat(best.price) ? bid : best
-    , null);
-
-    if (!bestBid) return;
-
+  async decideAcceptBid(agentName, job, bids, snapshot) {
     try {
-      console.log(`${posterAgent.name} accepting bid ${bestBid.id} from ${bestBid.bidder}`);
+      const agent = this.agents.get(agentName);
+      const agentData = snapshot.agents.find(a => a.name === agentName);
+      
+      // Build context with bidder reputation data
+      const bidsWithRep = bids.map(bid => {
+        const bidder = snapshot.agents.find(a => a.address === bid.bidder);
+        return {
+          ...bid,
+          bidderName: bidder?.name || "Unknown",
+          bidderRep: bidder?.reputation || 0,
+          bidderJobs: bidder?.jobsCompleted || 0,
+          bidderFails: bidder?.jobsFailed || 0
+        };
+      });
+
+      const prompt = `You are ${agentName}, reviewing bids for your job.
+
+YOUR PROFILE:
+- Reputation: ${agentData.reputation}
+- Jobs completed: ${agentData.jobsCompleted}
+
+JOB:
+- ID: ${job.id}
+- Escrow: ${job.escrowAmount} HBAR
+- Posted: ${new Date(job.createdAt * 1000).toLocaleString()}
+
+BIDS RECEIVED:
+${JSON.stringify(bidsWithRep, null, 2)}
+
+DECISION: Should you accept one of these bids now, or wait for better offers?
+
+Consider:
+1. Bidder reputation and track record
+2. Bid price vs your budget
+3. How long job has been open
+4. Risk of low-rep bidders
+
+RESPOND WITH VALID JSON ONLY:
+{
+  "decision": "accept" | "wait",
+  "reasoning": "brief explanation of why",
+  "bidId": "bid ID to accept (if decision is accept, else null)"
+}`;
+
+      const completion = await this.openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 200
+      });
+
+      const responseText = completion.choices[0].message.content;
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+
+      const decision = JSON.parse(jsonMatch[0]);
+
+      // Log reasoning
+      this._addActivity({
+        type: "thinking",
+        agent: agentName,
+        content: `Reviewing bids for job ${job.id}: ${decision.reasoning}`,
+        timestamp: Date.now()
+      });
+
+      return decision;
+    } catch (error) {
+      console.error(`Failed to decide on bid acceptance for ${agentName}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Execute bid acceptance
+   */
+  async executeBidAcceptance(posterAgent, job, bidId) {
+    try {
+      console.log(`${posterAgent.name} accepting bid ${bidId} for job ${job.id}`);
 
       const result = await this.toolGateway.execute({
         idempotencyKey: `accept-${posterAgent.name}-${job.id}-${Date.now()}`,
@@ -465,7 +536,7 @@ RESPOND WITH VALID JSON ONLY:
         tool: "acceptBid",
         params: {
           jobId: job.id,
-          bidId: bestBid.id
+          bidId: bidId
         }
       });
 
@@ -474,8 +545,7 @@ RESPOND WITH VALID JSON ONLY:
         agent: posterAgent.name,
         action: "accept_bid",
         jobId: job.id,
-        bidId: bestBid.id,
-        worker: bestBid.bidder,
+        bidId: bidId,
         txHash: result.txHash,
         timestamp: Date.now()
       });
@@ -496,8 +566,9 @@ RESPOND WITH VALID JSON ONLY:
     const workerAgent = this.agents.get(workerData.name);
     if (!workerAgent) return;
 
-    // 60% chance to deliver each tick
-    if (Math.random() < 0.6) {
+    // AI decides when to deliver
+    const decision = await this.decideDeliver(workerData.name, job, snapshot);
+    if (decision && decision.decision === "deliver") {
       try {
         const deliverable = `Completed work for job ${job.id} by ${workerData.name}`;
         const deliverableHash = "0x" + crypto.createHash("sha256").update(deliverable).digest("hex").slice(0, 64);
@@ -533,6 +604,72 @@ RESPOND WITH VALID JSON ONLY:
   }
 
   /**
+   * AI decision: Should worker deliver now?
+   */
+  async decideDeliver(agentName, job, snapshot) {
+    try {
+      const agentData = snapshot.agents.find(a => a.name === agentName);
+      const posterData = snapshot.agents.find(a => a.address === job.poster);
+
+      const prompt = `You are ${agentName}, working on a job.
+
+YOUR PROFILE:
+- Reputation: ${agentData.reputation}
+- Jobs completed: ${agentData.jobsCompleted}
+- Mode: ${this.agents.get(agentName)?.personality?.mode || "default"}
+
+JOB DETAILS:
+- Job ID: ${job.id}
+- Payment: ${job.escrowAmount} HBAR
+- Deadline: ${new Date(job.deadline * 1000).toLocaleString()}
+- Time remaining: ${Math.floor((job.deadline - Date.now() / 1000) / 60)} minutes
+
+CLIENT (${posterData?.name || "Unknown"}):
+- Reputation: ${posterData?.reputation || 0}
+- Jobs posted: ${posterData?.jobsCompleted || 0}
+
+DECISION: Should you deliver the work now?
+
+Consider:
+1. How much time until deadline
+2. Your reputation and work ethic
+3. Client's reputation (will they pay fairly?)
+
+RESPOND WITH VALID JSON ONLY:
+{
+  "decision": "deliver" | "wait",
+  "reasoning": "brief explanation"
+}`;
+
+      const completion = await this.openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 150
+      });
+
+      const responseText = completion.choices[0].message.content;
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+
+      const decision = JSON.parse(jsonMatch[0]);
+
+      // Log reasoning
+      this._addActivity({
+        type: "thinking",
+        agent: agentName,
+        content: `Delivery decision for job ${job.id}: ${decision.reasoning}`,
+        timestamp: Date.now()
+      });
+
+      return decision;
+    } catch (error) {
+      console.error(`Failed to decide on delivery for ${agentName}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
    * Handle finalization phase
    */
   async handleFinalization(job, snapshot) {
@@ -542,15 +679,13 @@ RESPOND WITH VALID JSON ONLY:
     const posterAgent = this.agents.get(posterData.name);
     if (!posterAgent) return;
 
-    // 70% chance to finalize each tick
-    if (Math.random() < 0.7) {
+    // AI decides whether to finalize and how to rate
+    const decision = await this.decideFinalize(posterData.name, job, snapshot);
+    if (decision && decision.decision === "finalize") {
       try {
-        // Frank (scammer) fails jobs, others succeed
-        const success = posterData.name !== "frank" || Math.random() > 0.8;
-        const rating = success ? Math.floor(Math.random() * 20) + 80 : Math.floor(Math.random() * 40);
         const evidenceHash = "0x" + crypto.createHash("sha256").update(`review-${job.id}`).digest("hex").slice(0, 64);
 
-        console.log(`${posterData.name} finalizing job ${job.id} - ${success ? "SUCCESS" : "FAIL"} (rating: ${rating})`);
+        console.log(`${posterData.name} finalizing job ${job.id} - ${decision.success ? "SUCCESS" : "FAIL"} (rating: ${decision.rating})`);
 
         const result = await this.toolGateway.execute({
           idempotencyKey: `finalize-${posterData.name}-${job.id}-${Date.now()}`,
@@ -559,8 +694,8 @@ RESPOND WITH VALID JSON ONLY:
           tool: "finalizeJob",
           params: {
             jobId: job.id,
-            success,
-            rating,
+            success: decision.success,
+            rating: decision.rating,
             evidenceHash
           }
         });
@@ -570,8 +705,8 @@ RESPOND WITH VALID JSON ONLY:
           agent: posterData.name,
           action: "finalize_job",
           jobId: job.id,
-          success,
-          rating,
+          success: decision.success,
+          rating: decision.rating,
           txHash: result.txHash,
           timestamp: Date.now()
         });
@@ -584,30 +719,147 @@ RESPOND WITH VALID JSON ONLY:
   }
 
   /**
+   * AI decision: How should buyer finalize job?
+   */
+  async decideFinalize(agentName, job, snapshot) {
+    try {
+      const agentData = snapshot.agents.find(a => a.name === agentName);
+      const workerData = snapshot.agents.find(a => a.address === job.assignedWorker);
+
+      const prompt = `You are ${agentName}, reviewing completed work.
+
+YOUR PROFILE:
+- Reputation: ${agentData.reputation}
+- Mode: ${this.agents.get(agentName)?.personality?.mode || "default"}
+
+JOB DETAILS:
+- Job ID: ${job.id}
+- Payment: ${job.escrowAmount} HBAR
+- Delivered: ${new Date(job.deliveredAt * 1000 || Date.now()).toLocaleString()}
+
+WORKER (${workerData?.name || "Unknown"}):
+- Reputation: ${workerData?.reputation || 0}
+- Jobs completed: ${workerData?.jobsCompleted || 0}
+- Jobs failed: ${workerData?.jobsFailed || 0}
+
+DECISION: How do you finalize this job?
+
+${agentName === "frank" ? "NOTE: You are a SCAMMER. You try to fail jobs unfairly to avoid payment." : ""}
+
+Consider:
+1. Worker's reputation and track record
+2. Your own reputation (unfair ratings hurt YOU too)
+3. Quality expectations vs price paid
+
+RESPOND WITH VALID JSON ONLY:
+{
+  "decision": "finalize" | "wait",
+  "success": true | false,
+  "rating": 0-100,
+  "reasoning": "brief explanation of your rating"
+}`;
+
+      const completion = await this.openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.8,
+        max_tokens: 200
+      });
+
+      const responseText = completion.choices[0].message.content;
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+
+      const decision = JSON.parse(jsonMatch[0]);
+
+      // Log reasoning
+      this._addActivity({
+        type: "thinking",
+        agent: agentName,
+        content: `Finalizing job ${job.id}: ${decision.reasoning}`,
+        timestamp: Date.now()
+      });
+
+      return decision;
+    } catch (error) {
+      console.error(`Failed to decide on finalization for ${agentName}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
    * Agent decides whether to bid
    */
   async decideBid(agentName, job, snapshot) {
-    const agent = this.agents.get(agentName);
-    const agentData = snapshot.agents.find(a => a.name === agentName);
+    try {
+      const agent = this.agents.get(agentName);
+      const agentData = snapshot.agents.find(a => a.name === agentName);
+      const posterData = snapshot.agents.find(a => a.address === job.poster);
 
-    // Simple decision: bid if escrow is reasonable
-    const escrowAmount = parseFloat(job.escrowAmount);
-    if (escrowAmount < 0.5) return null; // Too low
+      const prompt = `You are ${agentName}, evaluating a job opportunity.
 
-    // Add reasoning
-    this._addActivity({
-      type: "thinking",
-      agent: agentName,
-      content: `Considering job ${job.id} (${escrowAmount} HBAR escrow)...`,
-      timestamp: Date.now()
-    });
+YOUR PROFILE:
+- Reputation: ${agentData.reputation}
+- Jobs completed: ${agentData.jobsCompleted}
+- Jobs failed: ${agentData.jobsFailed}
+- Mode: ${agent.personality?.mode || "default"}
 
-    return {
-      decision: "bid",
-      jobId: job.id,
-      bidPrice: escrowAmount * 0.9, // Bid slightly below escrow
-      reasoning: `Fair payment for work`
-    };
+JOB OPPORTUNITY:
+- Job ID: ${job.id}
+- Escrow: ${job.escrowAmount} HBAR
+- Deadline: ${new Date(job.deadline * 1000).toLocaleString()}
+- Posted by: ${posterData?.name || "Unknown"}
+
+CLIENT REPUTATION:
+- Name: ${posterData?.name}
+- Reputation: ${posterData?.reputation || 0}
+- Jobs completed: ${posterData?.jobsCompleted || 0}
+- Jobs failed: ${posterData?.jobsFailed || 0}
+
+DECISION: Should you bid on this job?
+
+Consider:
+1. Is the escrow amount fair for the work?
+2. Is the client trustworthy? (check their reputation and history)
+3. Can you deliver before the deadline?
+4. What's your competitive bid price?
+
+RESPOND WITH VALID JSON ONLY:
+{
+  "decision": "bid" | "pass",
+  "reasoning": "brief explanation based on client reputation and payment",
+  "bidPrice": "HBAR amount to bid (if bidding, else null)"
+}`;
+
+      const completion = await this.openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 200
+      });
+
+      const responseText = completion.choices[0].message.content;
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+
+      const decision = JSON.parse(jsonMatch[0]);
+
+      // Log reasoning
+      this._addActivity({
+        type: "thinking",
+        agent: agentName,
+        content: `Job ${job.id} evaluation: ${decision.reasoning}`,
+        timestamp: Date.now()
+      });
+
+      return {
+        ...decision,
+        jobId: job.id
+      };
+    } catch (error) {
+      console.error(`Failed to decide bid for ${agentName}:`, error.message);
+      return null;
+    }
   }
 
   /**

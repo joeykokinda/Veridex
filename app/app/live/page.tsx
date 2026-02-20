@@ -179,6 +179,7 @@ export default function LiveDashboard() {
             <Link href="/live" style={{ fontWeight: "600", textDecoration: "underline" }}>
               Live Agent Feed
             </Link>
+            <Link href="/events">Blockchain Events</Link>
             <Link href="/skill.md">For Agents</Link>
             <a href="https://hashscan.io/testnet" target="_blank" rel="noopener">
               HashScan
@@ -379,8 +380,8 @@ export default function LiveDashboard() {
                               {activity.agent}
                             </span>
                           )}
-                          {activity.type === "thinking" && (
-                            <span style={{ fontSize: "11px", color: "var(--text-dim)" }}>thinking...</span>
+                          {activity.type === "reasoning" && (
+                            <span style={{ fontSize: "11px", color: "var(--accent)" }}>💭 thinking</span>
                           )}
                           {activity.type === "action" && (
                             <span style={{ fontSize: "11px", color: "var(--success)" }}>{activity.action}</span>

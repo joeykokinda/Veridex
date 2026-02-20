@@ -137,6 +137,7 @@ export default function DashboardPage() {
               On-Chain Data
             </Link>
             <Link href="/live">Live Agent Feed</Link>
+            <Link href="/events">Blockchain Events</Link>
             <Link href="/skill.md">For Agents</Link>
             <a href="https://hashscan.io/testnet" target="_blank" rel="noopener">
               HashScan
