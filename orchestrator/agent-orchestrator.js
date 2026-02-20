@@ -274,10 +274,12 @@ TASK: Decide which job (if any) to bid on. Consider:
 3. Do you have capacity/skills?
 4. What price should you bid?
 
+In your reasoning, explicitly reference the on-chain data you're reading — e.g. "I see ${posterName} has rep 720 and ${jobCount} completed jobs on-chain", "The escrow is X HBAR", "Competitor ${name} has rep Y". Make it feel like you're actually reading blockchain state.
+
 RESPOND WITH VALID JSON ONLY:
 {
   "decision": "bid" | "pass",
-  "reasoning": "brief explanation",
+  "reasoning": "2-3 sentences referencing specific on-chain data you read",
   "jobId": "job ID if bidding, else null",
   "bidPrice": "HBAR amount if bidding, else null"
 }`;
@@ -544,6 +546,7 @@ RESPOND WITH VALID JSON ONLY:
         return {
           ...bid,
           bidderName: bidder?.name || "Unknown",
+          bidderCapabilities: bidder?.capabilities || "",
           bidderWorkerRep: bidder?.reputationScore || 500,
           bidderClientRep: bidder?.clientScore || 500,
           bidderReports: bidder?.reportCount || 0,
@@ -569,11 +572,14 @@ REPUTATION GUIDE: Scores start at 500 (neutral). Above 600 = trustworthy. Below 
 
 Decide whether to accept a bid NOW or wait. Be decisive — waiting too long means the job never gets done.
 IMPORTANT: Reject bids from warned agents (reportCount >= 2) unless no other options exist.
+IMPORTANT: Consider bidderCapabilities — a specialist (e.g., ASCII artist for ASCII jobs, poet for poetry) is often worth picking even at equal or higher price. Don't just always pick the highest reputation.
+
+In your reasoning, reference specific on-chain data — the bidder's rep score, their completed jobs, their bid price vs others. Make it feel like you're reading actual blockchain state.
 
 RESPOND WITH VALID JSON ONLY (no markdown):
 {
   "decision": "accept" | "wait",
-  "reasoning": "your internal thought IN CHARACTER (2-3 sentences)",
+  "reasoning": "2-3 sentences IN CHARACTER referencing specific on-chain data (rep scores, bid amounts, job history)",
   "message": "what you SAY to the winning bidder (or why you're waiting), in your own voice",
   "bidId": "bid ID to accept if accepting, else null"
 }`;
@@ -822,10 +828,10 @@ RESPOND WITH VALID JSON ONLY (no markdown, no code blocks):
 }`;
 
       const completion = await this.openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-4o",
         messages: [{ role: "user", content: prompt }],
-        temperature: 0.8,
-        max_tokens: 400
+        temperature: 0.85,
+        max_tokens: 700
       });
 
       const responseText = completion.choices[0].message.content;

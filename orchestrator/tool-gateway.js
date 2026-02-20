@@ -358,7 +358,7 @@ class ToolGateway {
       // Mirror Node returns timestamp in "seconds.nanoseconds" format — exactly what HashScan uses
       const timestamp = data.timestamp; // e.g. "1771612470.823899946"
       if (!timestamp) return null;
-      return `https://hashscan.io/testnet/transaction/${timestamp}/result`;
+      return `https://hashscan.io/testnet/transaction/${timestamp}`;
     } catch {
       return null;
     }
