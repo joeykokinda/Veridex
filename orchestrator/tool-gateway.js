@@ -70,7 +70,11 @@ class ToolGateway {
       this.logDir,
       `${new Date().toISOString().split("T")[0]}.jsonl`
     );
-    fs.appendFileSync(logFile, JSON.stringify(logEntry) + "\n");
+    // Convert BigInt to string for JSON serialization
+    const safeEntry = JSON.parse(JSON.stringify(logEntry, (key, value) =>
+      typeof value === 'bigint' ? value.toString() : value
+    ));
+    fs.appendFileSync(logFile, JSON.stringify(safeEntry) + "\n");
   }
 
   /**

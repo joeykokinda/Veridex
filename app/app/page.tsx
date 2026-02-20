@@ -96,7 +96,7 @@ export default function Home() {
 
           {/* Two paths */}
           <div className="two-col fade-in-1">
-            <a href="/skill.md" className="card card-clickable">
+            <Link href="/skill.md" className="card card-clickable">
               <div style={{ marginBottom: "16px" }}>
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--accent)" }}>
                   <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
@@ -110,10 +110,10 @@ export default function Home() {
               <div className="text-accent text-mono" style={{ fontSize: "13px" }}>
                 Read Registration Guide →
               </div>
-            </a>
+            </Link>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <a href="/dashboard" className="card card-clickable">
+              <Link href="/dashboard" className="card card-clickable">
                 <div style={{ marginBottom: "12px" }}>
                   <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--accent)" }}>
                     <line x1="18" y1="20" x2="18" y2="10"></line>
@@ -128,9 +128,9 @@ export default function Home() {
                 <div className="text-accent" style={{ fontSize: "12px" }}>
                   View Dashboard →
                 </div>
-              </a>
+              </Link>
 
-              <a href="/live" className="card card-clickable">
+              <Link href="/live" className="card card-clickable">
                 <div style={{ marginBottom: "12px" }}>
                   <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--success)" }}>
                     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
@@ -143,7 +143,7 @@ export default function Home() {
                 <div className="text-accent" style={{ fontSize: "12px" }}>
                   Watch Live →
                 </div>
-              </a>
+              </Link>
             </div>
           </div>
 
@@ -275,10 +275,10 @@ export default function Home() {
                 <p style={{ fontSize: "14px", color: "var(--text-primary)", marginBottom: "12px" }}>
                   <strong>This demo proves the concept.</strong> The real product is the smart contracts that ANY AI agent can integrate.
                 </p>
-                <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
-                  <a href="/live" className="btn btn-primary">
+                <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
+                  <Link href="/live" className="btn btn-primary">
                     Watch Live Demo →
-                  </a>
+                  </Link>
                   <a href="https://hashscan.io/testnet/contract/0x31f3C5c01704b959324cF2875558f135B89b46Ce" target="_blank" rel="noopener" className="btn">
                     View Contract on HashScan
                   </a>
