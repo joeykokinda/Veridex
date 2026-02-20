@@ -32,6 +32,11 @@ const IDENTITY_ABI = [
   "event ClientRated(address indexed client, uint256 newClientScore, address indexed rater)"
 ];
 
+const CONTENT_REGISTRY_ABI = [
+  "function publish(uint256 jobId, bytes32 contentHash, string contentType, string content, string agentName) external",
+  "event ContentPublished(uint256 indexed jobId, address indexed agent, bytes32 indexed contentHash, string contentType, string content, string agentName, uint256 timestamp)"
+];
+
 const MARKETPLACE_ABI = [
   "function postJob(bytes32 descriptionHash, uint256 deadline) external payable",
   "function bidOnJob(uint256 jobId, uint256 price, bytes32 bidHash) external",
@@ -66,6 +71,17 @@ class ToolGateway {
       MARKETPLACE_ABI,
       this.provider
     );
+
+    // ContentRegistry: optional — stores full deliverable/job text on-chain
+    if (config.contentRegistryAddress) {
+      this.contentRegistryContract = new ethers.Contract(
+        config.contentRegistryAddress,
+        CONTENT_REGISTRY_ABI,
+        this.provider
+      );
+    } else {
+      this.contentRegistryContract = null;
+    }
 
     // Registry authority signs agent addresses for registerVerified()
     if (config.registryAuthorityKey) {
@@ -145,11 +161,17 @@ class ToolGateway {
         case "reactivateAgent":      result = await this._reactivateAgent(wallet); break;
         case "unregisterAgent":      result = await this._unregisterAgent(wallet); break;
         case "isRegistered":         result = await this._isRegistered(params.address); break;
+        case "publishContent":       result = await this._publishContent(wallet, params); break;
         default: throw new Error(`Unknown tool: ${tool}`);
       }
 
+      // Enrich result with human-readable HashScan link (async Mirror Node lookup)
+      if (result.txHash) {
+        result.txLink = await this._toHashScanUrl(result.txHash);
+      }
+
       this.executedActions.set(idempotencyKey, result);
-      this._log({ timestamp: Date.now(), agent: agentAddress, tool, params, result: "SUCCESS", txHash: result.txHash || null, data: result.data });
+      this._log({ timestamp: Date.now(), agent: agentAddress, tool, params, result: "SUCCESS", txHash: result.txHash || null, txLink: result.txLink || null, data: result.data });
       return result;
     } catch (error) {
       this._log({ timestamp: Date.now(), agent: agentAddress, tool, params, result: "ERROR", error: error.message });
@@ -298,8 +320,9 @@ class ToolGateway {
   }
 
   async _unregisterAgent(wallet) {
-    const identity = this.identityContract.connect(wallet);
-    const tx = await identity.unregister();
+    // Use explicit calldata to avoid ethers naming conflicts
+    const data = this.identityContract.interface.encodeFunctionData("unregister", []);
+    const tx = await wallet.sendTransaction({ to: await this.identityContract.getAddress(), data });
     const receipt = await tx.wait();
     return { txHash: receipt.hash, data: { unregistered: true } };
   }
@@ -307,6 +330,38 @@ class ToolGateway {
   async _isRegistered(address) {
     const registered = await this.identityContract.isRegistered(address);
     return { txHash: null, data: { registered } };
+  }
+
+  // ── ContentRegistry ───────────────────────────────────────────────────────
+
+  async _publishContent(wallet, params) {
+    if (!this.contentRegistryContract) {
+      return { txHash: null, data: { skipped: true, reason: "ContentRegistry not configured" } };
+    }
+    const { jobId, contentHash, contentType, content, agentName } = params;
+    const registry = this.contentRegistryContract.connect(wallet);
+    const tx = await registry.publish(jobId, contentHash, contentType, content, agentName);
+    const receipt = await tx.wait();
+    return { txHash: receipt.hash, data: { published: true, contentType, jobId } };
+  }
+
+  // ── HashScan URL helper ────────────────────────────────────────────────────
+
+  async _toHashScanUrl(evmHash) {
+    if (!evmHash) return null;
+    try {
+      const res = await fetch(
+        `https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${evmHash}`
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      // Mirror Node returns timestamp in "seconds.nanoseconds" format — exactly what HashScan uses
+      const timestamp = data.timestamp; // e.g. "1771612470.823899946"
+      if (!timestamp) return null;
+      return `https://hashscan.io/testnet/transaction/${timestamp}`;
+    } catch {
+      return null;
+    }
   }
 
   // ── Formatting ────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { Logo } from "../components/Logo";
 
 interface Activity {
   type: "reasoning" | "action" | "message" | "registered" | "unregistered" | "delivery" | "client_rating" | "report";
@@ -16,6 +17,7 @@ interface Activity {
   worker?: string;
   repBefore?: number;
   txHash?: string;
+  txLink?: string;
   timestamp: number;
   success?: boolean;
   rating?: number;
@@ -34,6 +36,7 @@ interface AgentInfo {
 
 interface SimStatus {
   running: boolean;
+  pendingAction?: string | null;
   uptime?: string;
   lastTick?: string;
   agents?: number;
@@ -43,6 +46,7 @@ interface JobBid {
   agent: string;
   price: string;
   txHash?: string;
+  txLink?: string;
 }
 
 interface JobState {
@@ -58,7 +62,9 @@ interface JobState {
   payment?: string;
   postedAt: number;
   posterTxHash?: string;
+  posterTxLink?: string;
   finalTxHash?: string;
+  finalTxLink?: string;
 }
 
 const ACTIVITY_API = process.env.NEXT_PUBLIC_ACTIVITY_API || "http://localhost:3001";
@@ -112,12 +118,13 @@ function deriveJobs(activities: Activity[]): JobState[] {
           bids: [],
           postedAt: a.timestamp,
           posterTxHash: a.txHash,
+          posterTxLink: a.txLink,
         };
       }
       if (a.action === "bid" && a.jobId && jobs[a.jobId]) {
         const alreadyBid = jobs[a.jobId].bids.some(b => b.agent === a.agent);
         if (!alreadyBid) {
-          jobs[a.jobId].bids.push({ agent: a.agent, price: a.price || "", txHash: a.txHash });
+          jobs[a.jobId].bids.push({ agent: a.agent, price: a.price || "", txHash: a.txHash, txLink: a.txLink });
         }
       }
       if (a.action === "accept_bid" && a.jobId && jobs[a.jobId]) {
@@ -132,6 +139,7 @@ function deriveJobs(activities: Activity[]): JobState[] {
         jobs[a.jobId].rating = a.rating;
         jobs[a.jobId].payment = a.payment;
         jobs[a.jobId].finalTxHash = a.txHash;
+        jobs[a.jobId].finalTxLink = a.txLink;
       }
     }
     if (a.type === "delivery" && a.jobId && jobs[a.jobId]) {
@@ -249,9 +257,9 @@ function JobCard({ job }: { job: JobState }) {
                     {job.winner === bid.agent && (
                       <span style={{ fontSize: "9px", color: "#4ade80", fontWeight: "700" }}>✓ WON</span>
                     )}
-                    {bid.txHash && (
+                    {(bid.txLink || bid.txHash) && (
                       <a
-                        href={`https://hashscan.io/testnet/transaction/${bid.txHash}`}
+                        href={bid.txLink || `https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${bid.txHash}`}
                         target="_blank" rel="noopener"
                         style={{ fontSize: "9px", color: "var(--accent)" }}
                         onClick={e => e.stopPropagation()}
@@ -287,13 +295,13 @@ function JobCard({ job }: { job: JobState }) {
           )}
 
           {/* Finalized tx link */}
-          {job.finalTxHash && (
+          {(job.finalTxLink || job.finalTxHash) && (
             <a
-              href={`https://hashscan.io/testnet/transaction/${job.finalTxHash}`}
+              href={job.finalTxLink || `https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${job.finalTxHash}`}
               target="_blank" rel="noopener"
               style={{ fontSize: "9px", color: "var(--accent)", fontFamily: "monospace" }}
             >
-              finalized: {job.finalTxHash.slice(0, 14)}... (HashScan)
+              finalized on-chain — view on HashScan ↗
             </a>
           )}
         </div>
@@ -365,30 +373,38 @@ export default function LiveDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  const startSim = async () => {
+  // True global lock: server says something is in progress, OR we just clicked and are waiting for the server to reflect it
+  const serverBusy = !!simStatus.pendingAction;
+  const globalLock = actionLoading || serverBusy;
+
+  const ctrlFetch = async (path: string) => {
     setActionLoading(true);
     try {
-      await fetch(`${ACTIVITY_API}/api/control/start`, { method: "POST" });
-      setTimeout(() => setActionLoading(false), 2000);
-    } catch { setActionLoading(false); }
+      const r = await fetch(`${ACTIVITY_API}${path}`, { method: "POST" });
+      const d = await r.json();
+      if (!d.success) console.warn("Control error:", d.message);
+    } catch (e) {
+      console.error("Control fetch failed:", e);
+    } finally {
+      // Don't clear immediately — wait for next status poll to confirm state
+      setTimeout(() => setActionLoading(false), 3000);
+    }
   };
 
-  const stopSim = async () => {
-    setActionLoading(true);
-    try {
-      await fetch(`${ACTIVITY_API}/api/control/stop`, { method: "POST" });
-      setTimeout(() => setActionLoading(false), 1000);
-    } catch { setActionLoading(false); }
-  };
-
+  const startSim  = () => ctrlFetch("/api/control/start");
+  const stopSim   = () => ctrlFetch("/api/control/stop");
   const restartSim = async () => {
     setActionLoading(true);
     try {
       await fetch(`${ACTIVITY_API}/api/control/stop`, { method: "POST" });
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 1500));
       await fetch(`${ACTIVITY_API}/api/control/start`, { method: "POST" });
-      setTimeout(() => setActionLoading(false), 2000);
-    } catch { setActionLoading(false); }
+    } catch (e) { console.error(e); }
+    setTimeout(() => setActionLoading(false), 3000);
+  };
+  const unregisterAll = () => {
+    if (!confirm("Unregister all 4 agents from the blockchain?\nThis resets their active status (reputation is preserved).")) return;
+    ctrlFetch("/api/control/unregister-all");
   };
 
   const selectedPersonality = selectedAgent ? personalities[selectedAgent] : null;
@@ -397,7 +413,7 @@ export default function LiveDashboard() {
     <>
       <header className="header">
         <div className="header-content">
-          <Link href="/" className="logo text-mono">AgentTrust</Link>
+          <Link href="/" className="logo text-mono"><Logo size={20} /></Link>
           <nav className="nav">
             <Link href="/dashboard">Agents</Link>
             <Link href="/live" style={{ fontWeight: "600", textDecoration: "underline" }}>Live Feed</Link>
@@ -415,11 +431,18 @@ export default function LiveDashboard() {
           <div className="flex items-center gap-3 mb-4">
             <h1 style={{ fontSize: "24px" }}>Live Agent Activity</h1>
             <span style={{
-              padding: "3px 10px", background: simStatus.running ? "var(--success)" : "var(--border)",
-              color: simStatus.running ? "#000" : "var(--text-dim)",
+              padding: "3px 10px",
+              background: simStatus.pendingAction ? "#fbbf24" : simStatus.running ? "var(--success)" : "var(--border)",
+              color: simStatus.pendingAction ? "#000" : simStatus.running ? "#000" : "var(--text-dim)",
               fontSize: "11px", fontWeight: "700", borderRadius: "4px", textTransform: "uppercase"
             }}>
-              {simStatus.running ? "Live" : "Stopped"}
+              {simStatus.pendingAction === "starting"
+                ? "Starting..."
+                : simStatus.pendingAction === "unregistering"
+                ? "Unregistering..."
+                : simStatus.running
+                ? "Live"
+                : "Stopped"}
             </span>
           </div>
 
@@ -501,42 +524,96 @@ export default function LiveDashboard() {
               {/* Sim controls */}
               {isAuthenticated ? (
                 <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "5px" }}>
-                  <div className="text-dim" style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Controls</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div className="text-dim" style={{ fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Controls</div>
+                    <button
+                      onClick={() => { localStorage.removeItem("auth"); setIsAuthenticated(false); }}
+                      style={{ fontSize: "9px", color: "var(--text-dim)", background: "none", border: "none", cursor: "pointer" }}
+                    >
+                      lock
+                    </button>
+                  </div>
+
+                  {/* Status message while busy */}
+                  {globalLock && (
+                    <div style={{
+                      padding: "6px 8px", borderRadius: "4px",
+                      background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)",
+                      fontSize: "10px", color: "#fbbf24", textAlign: "center"
+                    }}>
+                      {simStatus.pendingAction === "starting"      && "⏳ Registering agents on-chain..."}
+                      {simStatus.pendingAction === "unregistering" && "⏳ Unregistering from chain..."}
+                      {simStatus.pendingAction === "stopping"      && "⏳ Stopping..."}
+                      {!simStatus.pendingAction                    && "⏳ Waiting..."}
+                    </div>
+                  )}
+
+                  {/* START */}
                   <button
                     onClick={startSim}
-                    disabled={actionLoading || simStatus.running}
+                    disabled={globalLock || simStatus.running}
                     style={{
-                      padding: "7px", borderRadius: "6px", border: "none", cursor: simStatus.running ? "not-allowed" : "pointer",
-                      background: simStatus.running ? "var(--bg-tertiary)" : "var(--success)",
-                      color: simStatus.running ? "var(--text-dim)" : "#000",
-                      fontWeight: "600", fontSize: "12px", opacity: simStatus.running ? 0.5 : 1
+                      padding: "7px", borderRadius: "6px", border: "none",
+                      cursor: globalLock || simStatus.running ? "not-allowed" : "pointer",
+                      background: globalLock || simStatus.running ? "var(--bg-tertiary)" : "var(--success)",
+                      color: globalLock || simStatus.running ? "var(--text-dim)" : "#000",
+                      fontWeight: "600", fontSize: "12px",
+                      opacity: globalLock || simStatus.running ? 0.5 : 1
                     }}
                   >
-                    {actionLoading ? "..." : "Start"}
+                    {simStatus.pendingAction === "starting" ? "Starting..." : "Start"}
                   </button>
+
+                  {/* STOP */}
                   <button
                     onClick={stopSim}
-                    disabled={actionLoading || !simStatus.running}
+                    disabled={globalLock || !simStatus.running}
                     style={{
-                      padding: "7px", borderRadius: "6px", border: "none", cursor: !simStatus.running ? "not-allowed" : "pointer",
-                      background: !simStatus.running ? "var(--bg-tertiary)" : "var(--error)",
-                      color: !simStatus.running ? "var(--text-dim)" : "#fff",
-                      fontWeight: "600", fontSize: "12px", opacity: !simStatus.running ? 0.5 : 1
+                      padding: "7px", borderRadius: "6px", border: "none",
+                      cursor: globalLock || !simStatus.running ? "not-allowed" : "pointer",
+                      background: globalLock || !simStatus.running ? "var(--bg-tertiary)" : "var(--error)",
+                      color: globalLock || !simStatus.running ? "var(--text-dim)" : "#fff",
+                      fontWeight: "600", fontSize: "12px",
+                      opacity: globalLock || !simStatus.running ? 0.5 : 1
                     }}
                   >
-                    {actionLoading ? "..." : "Stop"}
+                    Stop
                   </button>
+
+                  {/* RESTART */}
                   <button
                     onClick={restartSim}
-                    disabled={actionLoading}
+                    disabled={globalLock}
                     style={{
                       padding: "7px", borderRadius: "6px", border: "1px solid var(--border)",
-                      cursor: "pointer", background: "var(--bg-secondary)",
-                      color: "var(--text)", fontWeight: "600", fontSize: "12px"
+                      cursor: globalLock ? "not-allowed" : "pointer",
+                      background: "var(--bg-secondary)", color: globalLock ? "var(--text-dim)" : "var(--text)",
+                      fontWeight: "600", fontSize: "12px",
+                      opacity: globalLock ? 0.5 : 1
                     }}
                   >
                     Restart
                   </button>
+
+                  {/* UNREGISTER ALL — only when stopped */}
+                  {!simStatus.running && (
+                    <button
+                      onClick={unregisterAll}
+                      disabled={globalLock}
+                      style={{
+                        padding: "6px 7px", borderRadius: "6px",
+                        border: "1px solid rgba(248,113,113,0.4)",
+                        cursor: globalLock ? "not-allowed" : "pointer",
+                        background: "rgba(248,113,113,0.08)",
+                        color: globalLock ? "var(--text-dim)" : "#f87171",
+                        fontWeight: "600", fontSize: "11px",
+                        opacity: globalLock ? 0.5 : 1,
+                        marginTop: "2px"
+                      }}
+                    >
+                      {simStatus.pendingAction === "unregistering" ? "Unregistering..." : "Unregister All"}
+                    </button>
+                  )}
                 </div>
               ) : (
                 <button
@@ -711,12 +788,12 @@ function ActivityCard({ activity }: { activity: Activity }) {
         }}>
           {activity.content}
         </div>
-        {activity.txHash && (
+        {(activity.txLink || activity.txHash) && (
           <div style={{ marginLeft: "26px", marginTop: "4px" }}>
-            <a href={`https://hashscan.io/testnet/transaction/${activity.txHash}`}
+            <a href={activity.txLink || `https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${activity.txHash}`}
               target="_blank" rel="noopener" className="text-mono"
               style={{ fontSize: "9px", color: "var(--accent)" }}>
-              on-chain: {activity.txHash.slice(0, 14)}... (HashScan)
+              view on HashScan ↗
             </a>
           </div>
         )}
@@ -802,11 +879,11 @@ function ActivityCard({ activity }: { activity: Activity }) {
               {activity.content}
             </div>
           )}
-          {activity.txHash && (
-            <a href={`https://hashscan.io/testnet/transaction/${activity.txHash}`}
+          {(activity.txLink || activity.txHash) && (
+            <a href={activity.txLink || `https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${activity.txHash}`}
               target="_blank" rel="noopener" className="text-mono"
               style={{ fontSize: "9px", color: "var(--accent)" }}>
-              {activity.txHash.slice(0, 16)}... (HashScan)
+              view on HashScan ↗
             </a>
           )}
         </div>
@@ -846,12 +923,12 @@ function ActivityCard({ activity }: { activity: Activity }) {
         }}>
           {activity.content}
         </div>
-        {activity.txHash && (
+        {(activity.txLink || activity.txHash) && (
           <div style={{ marginLeft: "24px", marginTop: "4px" }}>
-            <a href={`https://hashscan.io/testnet/transaction/${activity.txHash}`}
+            <a href={activity.txLink || `https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${activity.txHash}`}
               target="_blank" rel="noopener" className="text-mono"
               style={{ fontSize: "9px", color: "var(--accent)" }}>
-              on-chain: {activity.txHash.slice(0, 14)}... (HashScan)
+              view on HashScan ↗
             </a>
           </div>
         )}
@@ -879,9 +956,17 @@ function ActivityCard({ activity }: { activity: Activity }) {
           )}
           {activity.content && <span style={{ fontStyle: "italic" }}> — {activity.content}</span>}
         </span>
-        <span style={{ marginLeft: "auto", fontSize: "9px", color: "var(--text-dim)" }}>
-          {new Date(activity.timestamp).toLocaleTimeString()}
-        </span>
+        {(activity.txLink || activity.txHash) ? (
+          <a href={activity.txLink || `https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${activity.txHash}`}
+            target="_blank" rel="noopener"
+            style={{ fontSize: "9px", color: "var(--accent)", marginLeft: "auto" }}>
+            HashScan ↗
+          </a>
+        ) : (
+          <span style={{ marginLeft: "auto", fontSize: "9px", color: "var(--text-dim)" }}>
+            {new Date(activity.timestamp).toLocaleTimeString()}
+          </span>
+        )}
       </div>
     );
   }
@@ -908,11 +993,11 @@ function ActivityCard({ activity }: { activity: Activity }) {
           <span style={{ color: agentColor(activity.to || ""), textTransform: "capitalize" }}>{activity.to}</span>
           {activity.content && ` — ${activity.content}`}
         </span>
-        {activity.txHash && (
-          <a href={`https://hashscan.io/testnet/transaction/${activity.txHash}`}
+        {(activity.txLink || activity.txHash) && (
+          <a href={activity.txLink || `https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${activity.txHash}`}
             target="_blank" rel="noopener" className="text-mono"
             style={{ fontSize: "9px", color: "var(--accent)", marginLeft: "auto" }}>
-            {activity.txHash.slice(0, 10)}...
+            HashScan ↗
           </a>
         )}
       </div>
@@ -935,11 +1020,11 @@ function ActivityCard({ activity }: { activity: Activity }) {
         <span style={{ fontSize: "11px", color: isReg ? "var(--success)" : "var(--error)" }}>
           {isReg ? "joined the network" : "left the network"}
         </span>
-        {activity.txHash && (
-          <a href={`https://hashscan.io/testnet/transaction/${activity.txHash}`}
+        {(activity.txLink || activity.txHash) && (
+          <a href={activity.txLink || `https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${activity.txHash}`}
             target="_blank" rel="noopener" className="text-mono"
             style={{ fontSize: "9px", color: "var(--accent)", marginLeft: "auto" }}>
-            {activity.txHash.slice(0, 10)}...
+            HashScan ↗
           </a>
         )}
       </div>

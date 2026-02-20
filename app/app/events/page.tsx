@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ethers } from "ethers";
+import { Logo } from "../components/Logo";
 
 interface BlockchainEvent {
   type: "AgentRegistered" | "JobCompleted" | "AgentUnregistered" | "BidPlaced" | "JobFinalized";
@@ -73,26 +74,28 @@ export default function EventsPage() {
       const allEvents: BlockchainEvent[] = [];
 
       // Process AgentRegistered events
-      for (const event of registeredEvents) {
-        const block = await event.getBlock();
+      for (const _event of registeredEvents) {
+        const event = _event as ethers.EventLog;
+        await event.getBlock();
         allEvents.push({
           type: "AgentRegistered",
-          agentAddress: event.args![0] as string,
-          agentName: event.args![1] as string,
-          timestamp: Number(event.args![2]),
+          agentAddress: event.args[0] as string,
+          agentName: event.args[1] as string,
+          timestamp: Number(event.args[2]),
           blockNumber: event.blockNumber,
           txHash: event.transactionHash,
           data: {
-            name: event.args![1]
+            name: event.args[1]
           }
         });
       }
 
       // Process JobCompleted events
-      for (const event of jobCompletedEvents) {
+      for (const _event of jobCompletedEvents) {
+        const event = _event as ethers.EventLog;
         const block = await event.getBlock();
-        const agentAddress = event.args![0] as string;
-        
+        const agentAddress = event.args[0] as string;
+
         // Try to get agent name
         let agentName = "Unknown";
         try {
@@ -110,19 +113,20 @@ export default function EventsPage() {
           blockNumber: event.blockNumber,
           txHash: event.transactionHash,
           data: {
-            payment: ethers.formatEther(event.args![1]),
-            newReputation: Number(event.args![2])
+            payment: ethers.formatEther(event.args[1]),
+            newReputation: Number(event.args[2])
           }
         });
       }
 
       // Process AgentUnregistered events
-      for (const event of unregisteredEvents) {
-        const block = await event.getBlock();
+      for (const _event of unregisteredEvents) {
+        const event = _event as ethers.EventLog;
+        await event.getBlock();
         allEvents.push({
           type: "AgentUnregistered",
-          agentAddress: event.args![0] as string,
-          timestamp: Number(event.args![1]),
+          agentAddress: event.args[0] as string,
+          timestamp: Number(event.args[1]),
           blockNumber: event.blockNumber,
           txHash: event.transactionHash,
           data: {}
@@ -178,7 +182,7 @@ export default function EventsPage() {
       <header className="header">
         <div className="header-content">
           <Link href="/" className="logo text-mono">
-            AgentTrust
+            <Logo size={20} />
           </Link>
           <nav className="nav">
             <Link href="/dashboard">On-Chain Data</Link>

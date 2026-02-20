@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ethers } from "ethers";
+import { Logo } from "../components/Logo";
 
 interface ChainEvent {
   type: string;
   txHash: string;
+  hashScanUrl?: string;
   blockNumber: number;
   timestamp: number;
   data: Record<string, string | number | boolean>;
@@ -33,6 +35,20 @@ const MARKETPLACE_ABI = [
 
 // Known agent addresses (for display)
 const AGENT_NAMES: Record<string, string> = {};
+
+async function toHashScanUrl(evmHash: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(
+      `https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${evmHash}`
+    );
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    if (!data.timestamp) return undefined;
+    return `https://hashscan.io/testnet/transaction/${data.timestamp}`;
+  } catch {
+    return undefined;
+  }
+}
 
 function shortAddr(addr: string) {
   return `${addr.slice(0, 8)}...${addr.slice(-6)}`;
@@ -190,6 +206,14 @@ export default function ScannerPage() {
       setEvents(allEvents);
       setLoading(false);
       setError("");
+
+      // Resolve HashScan URLs in background (first 30 events, in parallel)
+      const toResolve = allEvents.slice(0, 30);
+      const urls = await Promise.all(toResolve.map(e => toHashScanUrl(e.txHash)));
+      const resolved = allEvents.map((e, i) =>
+        i < toResolve.length && urls[i] ? { ...e, hashScanUrl: urls[i] } : e
+      );
+      setEvents(resolved);
     } catch (err: any) {
       setError(err.message || "Failed to fetch events");
       setLoading(false);
@@ -206,7 +230,8 @@ export default function ScannerPage() {
       <header className="header" style={{ background: "var(--bg-secondary)", borderBottom: "2px solid var(--accent)" }}>
         <div className="header-content">
           <Link href="/" className="logo text-mono">
-            AgentTrust <span style={{ color: "var(--accent)", fontSize: "14px" }}>/ Scanner</span>
+            <Logo size={20} />
+            <span style={{ color: "var(--accent)", fontSize: "14px", marginLeft: "4px" }}>/ Scanner</span>
           </Link>
           <nav className="nav">
             <Link href="/dashboard">Agents</Link>
@@ -302,7 +327,7 @@ export default function ScannerPage() {
                   const color = eventColor(event.type);
                   return (
                     <a key={`${event.txHash}-${idx}`}
-                      href={`https://hashscan.io/testnet/transaction/${event.txHash}`}
+                      href={event.hashScanUrl || `https://hashscan.io/testnet/transaction/${event.txHash}`}
                       target="_blank" rel="noopener noreferrer"
                       style={{
                         display: "flex", alignItems: "flex-start", gap: "12px",

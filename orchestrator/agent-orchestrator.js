@@ -42,6 +42,10 @@ class AgentOrchestrator {
     // Track job descriptions so workers know what to deliver (on-chain only stores hash)
     this.jobDescriptions = new Map(); // jobId → { description, type: "poem"|"art" }
     this.lastJobType = "art"; // alternate: next will be "poem"
+
+    // Tracks in-progress operations so ALL connected clients can lock their buttons
+    // null | "starting" | "stopping" | "unregistering"
+    this.pendingAction = null;
   }
 
   /**
@@ -346,6 +350,7 @@ RESPOND WITH VALID JSON ONLY:
         jobId: decision.jobId,
         price: decision.bidPrice,
         txHash: result.txHash,
+        txLink: result.txLink,
         timestamp: Date.now()
       });
       
@@ -577,21 +582,25 @@ RESPOND WITH VALID JSON ONLY (no markdown):
         }
       });
 
+      // Resolve winner name before emitting activity so we can include it
+      const winnerBid = allBids.find(b => String(b.id) === String(bidId)) || null;
+      const winnerAddr = winnerBid?.bidder;
+      const winnerAgent = [...(this.agents?.entries() || [])].find(([, a]) => a.wallet.address === winnerAddr);
+      const winnerName = winnerAgent?.[0];
+
       this._addActivity({
         type: "action",
         agent: posterAgent.name,
         action: "accept_bid",
         jobId: job.id,
         bidId: bidId,
+        worker: winnerName,
         txHash: result.txHash,
+        txLink: result.txLink,
         timestamp: Date.now()
       });
 
-      // Message to the winning bidder (LLM-generated) — include txHash so UI can link to HashScan
-      const winnerBid = allBids.find(b => String(b.id) === String(bidId)) || null;
-      const winnerAddr = winnerBid?.bidder;
-      const winnerAgent = [...(this.agents?.entries() || [])].find(([, a]) => a.wallet.address === winnerAddr);
-      const winnerName = winnerAgent?.[0];
+      // Message to the winning bidder (LLM-generated) — include txLink so UI can link to HashScan
       if (winnerName && acceptDecision?.message) {
         this._addActivity({
           type: "message",
@@ -599,6 +608,7 @@ RESPOND WITH VALID JSON ONLY (no markdown):
           to: winnerName,
           content: acceptDecision.message,
           txHash: result.txHash,
+          txLink: result.txLink,
           timestamp: Date.now()
         });
       }
@@ -655,10 +665,36 @@ RESPOND WITH VALID JSON ONLY (no markdown):
           jobId: job.id,
           deliverableHash,
           txHash: result.txHash,
+          txLink: result.txLink,
           timestamp: Date.now()
         });
 
-        // Show the actual work content in the feed
+        // Publish full deliverable content on-chain via ContentRegistry
+        // The delivery activity txLink will point to THIS tx so HashScan shows the actual poem/art
+        let contentTxLink = result.txLink; // fallback: point to submitDelivery if publish fails
+        if (decision.deliverable) {
+          try {
+            const publishResult = await this.toolGateway.execute({
+              idempotencyKey: `publish-delivery-${workerData.name}-${job.id}`,
+              agentAddress: workerAgent.wallet.address,
+              agentPrivateKey: workerAgent.wallet.privateKey,
+              tool: "publishContent",
+              params: {
+                jobId: parseInt(job.id),
+                contentHash: deliverableHash,
+                contentType: "deliverable",
+                content: decision.deliverable,
+                agentName: workerData.name
+              }
+            });
+            if (publishResult.txLink) contentTxLink = publishResult.txLink;
+            console.log(`✓ Deliverable published on-chain for job ${job.id}`);
+          } catch (e) {
+            console.log(`ContentRegistry publish failed (non-fatal): ${e.message}`);
+          }
+        }
+
+        // Show the actual work content in the feed — txLink points to the ContentRegistry tx
         if (decision.deliverable) {
           this._addActivity({
             type: "delivery",
@@ -666,11 +702,12 @@ RESPOND WITH VALID JSON ONLY (no markdown):
             jobId: job.id,
             content: decision.deliverable,
             txHash: result.txHash,
+            txLink: contentTxLink,
             timestamp: Date.now()
           });
         }
 
-        // Message to the poster (LLM-generated from decideDeliver) — include txHash for HashScan link
+        // Message to the poster (LLM-generated from decideDeliver) — include txLink for HashScan link
         const posterData2 = snapshot.agents.find(a => a.address === job.poster);
         const posterName2 = posterData2?.name;
         if (posterName2 && decision.message) {
@@ -680,6 +717,7 @@ RESPOND WITH VALID JSON ONLY (no markdown):
             to: posterName2,
             content: decision.message,
             txHash: result.txHash,
+            txLink: result.txLink,
             timestamp: Date.now()
           });
         }
@@ -819,10 +857,11 @@ RESPOND WITH VALID JSON ONLY (no markdown, no code blocks):
           worker: workerName2,
           repBefore,
           txHash: result.txHash,
+          txLink: result.txLink,
           timestamp: Date.now()
         });
 
-        // Message to the worker — include txHash for HashScan link
+        // Message to the worker — include txLink for HashScan link
         if (workerName2 && decision.message) {
           this._addActivity({
             type: "message",
@@ -830,6 +869,7 @@ RESPOND WITH VALID JSON ONLY (no markdown, no code blocks):
             to: workerName2,
             content: decision.message,
             txHash: result.txHash,
+            txLink: result.txLink,
             timestamp: Date.now()
           });
         }
@@ -894,6 +934,7 @@ RESPOND WITH VALID JSON ONLY (no markdown, no code blocks):
         rating,
         content: decision.reasoning,
         txHash: result.txHash,
+        txLink: result.txLink,
         timestamp: Date.now()
       });
 
@@ -981,6 +1022,7 @@ RESPOND WITH VALID JSON ONLY (no markdown):
         to: badActorName,
         content: reason,
         txHash: result.txHash,
+        txLink: result.txLink,
         timestamp: Date.now()
       });
 
@@ -1171,10 +1213,11 @@ RESPOND WITH VALID JSON ONLY (no markdown):
         jobId: job.id,
         price: decision.bidPrice,
         txHash: result.txHash,
+        txLink: result.txLink,
         timestamp: Date.now()
       });
 
-      // Inter-agent message to the poster (LLM-generated) — include txHash for HashScan link
+      // Inter-agent message to the poster (LLM-generated) — include txLink for HashScan link
       const posterData = snapshot?.agents?.find(a => a.address === job.poster);
       const posterName = posterData?.name;
       if (posterName && decision.message) {
@@ -1184,6 +1227,7 @@ RESPOND WITH VALID JSON ONLY (no markdown):
           to: posterName,
           content: decision.message,
           txHash: result.txHash,
+          txLink: result.txLink,
           timestamp: Date.now()
         });
       }
@@ -1249,14 +1293,37 @@ RESPOND WITH VALID JSON ONLY (no markdown):
         this.jobDescriptions.set(result.data.jobId.toString(), { description: job.desc, type: job.type });
       }
 
+      // Publish job description on-chain so it's visible on HashScan (non-fatal)
+      if (result.data?.jobId) {
+        try {
+          await this.toolGateway.execute({
+            idempotencyKey: `publish-job-${agentName}-${result.data.jobId}`,
+            agentAddress: agent.wallet.address,
+            agentPrivateKey: agent.wallet.privateKey,
+            tool: "publishContent",
+            params: {
+              jobId: parseInt(result.data.jobId),
+              contentHash: descHash,
+              contentType: "job_description",
+              content: job.desc,
+              agentName
+            }
+          });
+        } catch (e) {
+          // ContentRegistry not configured or failed — non-fatal
+        }
+      }
+
       this._addActivity({
         type: "action",
         agent: agentName,
         action: "post_job",
+        jobId: result.data?.jobId?.toString(),
         description: job.desc,
         jobType: job.type,
         price: job.price,
         txHash: result.txHash,
+        txLink: result.txLink,
         timestamp: Date.now()
       });
 
@@ -1331,6 +1398,7 @@ RESPOND WITH VALID JSON ONLY (no markdown):
             action: "registered",
             content: `${name} reactivated on AgentTrust (reputation preserved)`,
             txHash: reactResult.txHash,
+            txLink: reactResult.txLink,
             timestamp: Date.now()
           });
           continue; // Skip fresh registration below
@@ -1376,6 +1444,7 @@ RESPOND WITH VALID JSON ONLY (no markdown):
           action: "registered",
           content: `${displayName} registered on AgentTrust (${capabilities})`,
           txHash: result.txHash,
+          txLink: result.txLink,
           timestamp: Date.now()
         });
       } catch (error) {
@@ -1420,6 +1489,7 @@ RESPOND WITH VALID JSON ONLY (no markdown):
           action: "unregistered",
           content: `${name} unregistered from AgentTrust`,
           txHash: result.txHash,
+          txLink: result.txLink,
           timestamp: Date.now()
         });
       } catch (error) {
@@ -1433,8 +1503,9 @@ RESPOND WITH VALID JSON ONLY (no markdown):
    * Start the orchestrator (non-blocking)
    */
   async start() {
-    if (this.running) return;
+    if (this.running || this.pendingAction) return;
 
+    this.pendingAction = "starting";
     this.running = true;
     this.startTime = Date.now();
     this._tickTimer = null;
@@ -1449,6 +1520,7 @@ RESPOND WITH VALID JSON ONLY (no markdown):
     // Run first tick immediately
     await this.tick();
     this.lastTickTime = Date.now();
+    this.pendingAction = null; // registration + first tick done — UI can unlock
 
     // Schedule subsequent ticks
     this._tickTimer = setInterval(async () => {
@@ -1467,6 +1539,7 @@ RESPOND WITH VALID JSON ONLY (no markdown):
    */
   stop() {
     this.running = false;
+    this.pendingAction = null;
     if (this._tickTimer) {
       clearInterval(this._tickTimer);
       this._tickTimer = null;
@@ -1478,6 +1551,21 @@ RESPOND WITH VALID JSON ONLY (no markdown):
     this.lastJobType = "art";
     console.log("\nOrchestrator stopped");
     // Note: agents stay registered on-chain so the marketplace can always track reputation
+  }
+
+  /**
+   * Unregister all agents on-chain (callable via API).
+   * Stops the sim first if running.
+   */
+  async unregisterAll() {
+    if (this.pendingAction) return;
+    if (this.running) this.stop();
+    this.pendingAction = "unregistering";
+    try {
+      await this.unregisterAllAgents();
+    } finally {
+      this.pendingAction = null;
+    }
   }
 }
 

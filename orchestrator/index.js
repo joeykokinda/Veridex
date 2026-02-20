@@ -25,6 +25,7 @@ const config = {
     rpcUrl: "https://testnet.hashio.io/api",
     identityAddress: process.env.AGENT_IDENTITY_CONTRACT,
     marketplaceAddress: process.env.AGENT_MARKETPLACE_CONTRACT,
+    contentRegistryAddress: process.env.CONTENT_REGISTRY_CONTRACT,
     maxCallsPerMinute: 50,
     logDir: "./logs",
     registryAuthorityKey: process.env.DEPLOYER_PRIVATE_KEY
@@ -105,11 +106,12 @@ app.get("/api/personalities", (req, res) => {
 app.get("/api/status", (req, res) => {
   res.json({
     running: orchestrator.running,
+    pendingAction: orchestrator.pendingAction || null,
     agents: orchestrator.agents.size,
-    uptime: orchestrator.startTime 
+    uptime: orchestrator.startTime
       ? Math.floor((Date.now() - orchestrator.startTime) / 1000) + "s"
       : "0s",
-    lastTick: orchestrator.lastTickTime 
+    lastTick: orchestrator.lastTickTime
       ? new Date(orchestrator.lastTickTime).toLocaleTimeString()
       : "N/A"
   });
@@ -133,9 +135,20 @@ app.post("/api/control/stop", (req, res) => {
   if (!orchestrator.running) {
     return res.json({ success: false, message: "Simulation not running" });
   }
-  
   orchestrator.stop();
   res.json({ success: true, message: "Simulation stopped" });
+});
+
+// Unregister all agents on-chain and stop the simulation
+app.post("/api/control/unregister-all", async (req, res) => {
+  if (orchestrator.pendingAction) {
+    return res.json({ success: false, message: `Busy: ${orchestrator.pendingAction}` });
+  }
+  res.json({ success: true, message: "Unregistering all agents from chain..." });
+  orchestrator.unregisterAll().catch(err => {
+    console.error("Unregister-all error:", err);
+    orchestrator.pendingAction = null;
+  });
 });
 
 // ── OpenClaw / external agent integration ─────────────────────────────────────

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ethers } from "ethers";
+import { Logo } from "../components/Logo";
 
 interface Agent {
   address: string;
@@ -11,211 +12,257 @@ interface Agent {
   capabilities: string;
   registeredAt: string;
   active: boolean;
-  stats: {
-    jobsCompleted: number;
-    jobsFailed: number;
-    reputationScore: number;
-    totalEarned: string;
-  };
+  verifiedMachineAgent: boolean;
+  jobsCompleted: number;
+  jobsFailed: number;
+  reputationScore: number;
+  totalEarned: string;
+  clientScore: number;
+  reportCount: number;
 }
 
-// ABI - only what we need to read
+// Full ABI matching the deployed AgentIdentity contract
 const AGENT_IDENTITY_ABI = [
   "function totalAgents() external view returns (uint256)",
   "function agentList(uint256) external view returns (address)",
-  "function getAgent(address) external view returns (tuple(string name, string description, string capabilities, uint256 registeredAt, bool active, uint256 jobsCompleted, uint256 jobsFailed, uint256 totalEarned, uint256 reputationScore, uint256 totalRatings))",
-  "function isRegistered(address) external view returns (bool)"
+  "function isVerified(address) external view returns (bool)",
+  "function isWarned(address) external view returns (bool)",
+  "function getAgent(address) external view returns (tuple(string name, string description, string capabilities, uint256 registeredAt, bool active, bool verifiedMachineAgent, uint256 jobsCompleted, uint256 jobsFailed, uint256 totalEarned, uint256 reputationScore, uint256 totalRatings, uint256 clientScore, uint256 clientRatings, uint256 reportCount))"
 ];
 
-// Hedera testnet config
 const HEDERA_RPC = "https://testnet.hashio.io/api";
-const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "";
+const IDENTITY_ADDR  = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "";
+const IDENTITY_HID   = process.env.NEXT_PUBLIC_IDENTITY_HEDERA_ID || "0.0.7992394";
+const MARKETPLACE_ADDR = process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS || "";
+const MARKETPLACE_HID  = process.env.NEXT_PUBLIC_MARKETPLACE_HEDERA_ID || "0.0.7992397";
+
+function mirrorLink(hash: string) {
+  return `https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${hash}`;
+}
+function hashscanAccount(addr: string) {
+  return `https://hashscan.io/testnet/account/${addr}`;
+}
+function hashscanContract(hid: string) {
+  return `https://hashscan.io/testnet/contract/${hid}`;
+}
+
+function RepBar({ score }: { score: number }) {
+  const color = score >= 700 ? "var(--success)" : score >= 400 ? "var(--accent)" : "var(--error)";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <div style={{ flex: 1, height: "4px", background: "var(--border)", borderRadius: "2px" }}>
+        <div style={{ width: `${score / 10}%`, height: "100%", background: color, borderRadius: "2px", transition: "width 0.5s" }} />
+      </div>
+      <span className="text-mono" style={{ fontSize: "12px", color, minWidth: "36px", textAlign: "right" }}>
+        {score}
+      </span>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [stats, setStats] = useState({
-    total: 0,
-    active: 0,
-    jobsCompleted: 0,
-    totalEarned: "0"
-  });
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   useEffect(() => {
-    if (!CONTRACT_ADDRESS) {
-      setError("Contract address not configured");
-      setLoading(false);
-      return;
-    }
-    
     fetchAgents();
-    // Poll every 15 seconds
     const interval = setInterval(fetchAgents, 15000);
     return () => clearInterval(interval);
   }, []);
 
   const fetchAgents = async () => {
     try {
-      // Connect directly to Hedera blockchain (no backend needed!)
       const provider = new ethers.JsonRpcProvider(HEDERA_RPC);
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, AGENT_IDENTITY_ABI, provider);
+      const contract = new ethers.Contract(IDENTITY_ADDR, AGENT_IDENTITY_ABI, provider);
 
-      // Get total agents
-      const total = await contract.totalAgents();
-      const totalNum = Number(total);
+      const total = Number(await contract.totalAgents());
+      if (total === 0) { setLoading(false); return; }
 
-      if (totalNum === 0) {
-        setLoading(false);
-        return;
+      // agentList can have duplicates (each registerVerified re-pushes the address)
+      // Deduplicate by address, keep latest (last occurrence)
+      const seen = new Map<string, Agent>();
+
+      for (let i = 0; i < total; i++) {
+        try {
+          const address: string = await contract.agentList(i);
+          const a = await contract.getAgent(address);
+          if (!a.active) continue;
+
+          seen.set(address.toLowerCase(), {
+            address,
+            name: a.name,
+            description: a.description,
+            capabilities: a.capabilities,
+            registeredAt: new Date(Number(a.registeredAt) * 1000).toISOString(),
+            active: a.active,
+            verifiedMachineAgent: a.verifiedMachineAgent,
+            jobsCompleted: Number(a.jobsCompleted),
+            jobsFailed: Number(a.jobsFailed),
+            reputationScore: Number(a.reputationScore),
+            totalEarned: ethers.formatEther(a.totalEarned),
+            clientScore: Number(a.clientScore),
+            reportCount: Number(a.reportCount),
+          });
+        } catch (e) {
+          // skip individual fetch errors
+        }
       }
 
-      // Fetch all agents
-      const agentPromises = [];
-      for (let i = 0; i < totalNum; i++) {
-        agentPromises.push(
-          (async () => {
-            try {
-              const address = await contract.agentList(i);
-              const agent = await contract.getAgent(address);
-              
-              return {
-                address,
-                name: agent.name,
-                description: agent.description,
-                capabilities: agent.capabilities,
-                registeredAt: new Date(Number(agent.registeredAt) * 1000).toISOString(),
-                active: agent.active,
-                stats: {
-                  jobsCompleted: Number(agent.jobsCompleted),
-                  jobsFailed: Number(agent.jobsFailed),
-                  reputationScore: Number(agent.reputationScore),
-                  totalEarned: ethers.formatEther(agent.totalEarned)
-                }
-              };
-            } catch (err) {
-              console.error(`Error fetching agent ${i}:`, err);
-              return null;
-            }
-          })()
-        );
-      }
-
-      const fetchedAgents = (await Promise.all(agentPromises)).filter((a): a is Agent => a !== null && a.active);
-      setAgents(fetchedAgents);
-
-      // Calculate stats
-      const activeCount = fetchedAgents.filter(a => a.active).length;
-      const totalJobs = fetchedAgents.reduce((sum, a) => sum + a.stats.jobsCompleted, 0);
-      const totalEarned = fetchedAgents.reduce((sum, a) => sum + parseFloat(a.stats.totalEarned), 0);
-
-      setStats({
-        total: totalNum,
-        active: activeCount,
-        jobsCompleted: totalJobs,
-        totalEarned: totalEarned.toFixed(2)
-      });
-
+      setAgents(Array.from(seen.values()));
+      setLastUpdate(new Date());
       setLoading(false);
       setError("");
     } catch (err: any) {
-      console.error("Blockchain fetch error:", err);
       setError(err.message || "Failed to fetch from blockchain");
       setLoading(false);
     }
   };
 
+  const totalJobs = agents.reduce((s, a) => s + a.jobsCompleted, 0);
+  const totalEarned = agents.reduce((s, a) => s + parseFloat(a.totalEarned), 0);
+  const verifiedCount = agents.filter(a => a.verifiedMachineAgent).length;
+
   return (
     <>
       <header className="header">
         <div className="header-content">
-          <Link href="/" className="logo text-mono">
-            AgentTrust
-          </Link>
+          <Link href="/" className="logo text-mono"><Logo size={20} /></Link>
           <nav className="nav">
-            <Link href="/dashboard" style={{ fontWeight: "600", textDecoration: "underline" }}>
-              Agents
-            </Link>
+            <Link href="/dashboard" style={{ fontWeight: "600", textDecoration: "underline" }}>Agents</Link>
             <Link href="/live">Live Feed</Link>
             <Link href="/skill.md">Docs</Link>
             <span style={{ color: "var(--border)" }}>|</span>
-            <Link href="/scanner" style={{ color: "var(--accent)" }}>
-              Scanner
-            </Link>
+            <Link href="/scanner" style={{ color: "var(--accent)" }}>Scanner</Link>
           </nav>
         </div>
       </header>
 
       <main style={{ minHeight: "calc(100vh - 60px)", padding: "64px 0" }}>
         <div className="container">
+
+          {/* Title */}
           <div className="mb-4">
             <h1 className="mb-1">Live Agent Network</h1>
-            <p className="text-dim">
-              Real-time data fetched directly from Hedera blockchain
-            </p>
-            {CONTRACT_ADDRESS && (
-              <div className="mt-2">
-                <a 
-                  href={`https://hashscan.io/testnet/contract/${CONTRACT_ADDRESS}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-mono text-dim"
-                  style={{ fontSize: "11px", textDecoration: "underline" }}
-                >
-                  Contract: {CONTRACT_ADDRESS}
-                </a>
+            <p className="text-dim">Real-time data fetched directly from Hedera blockchain — no backend</p>
+          </div>
+
+          {/* Contracts section */}
+          <div className="card mb-4" style={{ padding: "20px" }}>
+            <div className="text-dim mb-3" style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+              Deployed Contracts — Hedera Testnet
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              {/* Identity contract */}
+              <div>
+                <div className="text-mono" style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>
+                  AgentIdentity
+                </div>
+                <div className="text-mono text-dim" style={{ fontSize: "10px", marginBottom: "8px", wordBreak: "break-all" }}>
+                  {IDENTITY_ADDR}
+                </div>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <a
+                    href={hashscanContract(IDENTITY_HID)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: "11px", color: "var(--accent)", textDecoration: "underline" }}
+                  >
+                    HashScan ({IDENTITY_HID})
+                  </a>
+                  <span className="text-dim" style={{ fontSize: "11px" }}>·</span>
+                  <a
+                    href={`https://testnet.mirrornode.hedera.com/api/v1/contracts/${IDENTITY_HID}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: "11px", color: "var(--text-dim)", textDecoration: "underline" }}
+                  >
+                    Mirror Node (raw)
+                  </a>
+                </div>
               </div>
-            )}
+
+              {/* Marketplace contract */}
+              <div>
+                <div className="text-mono" style={{ fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}>
+                  AgentMarketplace
+                </div>
+                <div className="text-mono text-dim" style={{ fontSize: "10px", marginBottom: "8px", wordBreak: "break-all" }}>
+                  {MARKETPLACE_ADDR}
+                </div>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <a
+                    href={hashscanContract(MARKETPLACE_HID)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: "11px", color: "var(--accent)", textDecoration: "underline" }}
+                  >
+                    HashScan ({MARKETPLACE_HID})
+                  </a>
+                  <span className="text-dim" style={{ fontSize: "11px" }}>·</span>
+                  <a
+                    href={`https://testnet.mirrornode.hedera.com/api/v1/contracts/${MARKETPLACE_HID}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: "11px", color: "var(--text-dim)", textDecoration: "underline" }}
+                  >
+                    Mirror Node (raw)
+                  </a>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Stats */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "48px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "32px" }}>
             <div className="card">
-              <div className="text-dim mb-1" style={{ fontSize: "12px" }}>Total Agents</div>
+              <div className="text-dim mb-1" style={{ fontSize: "12px" }}>Active Agents</div>
               <div className="text-mono" style={{ fontSize: "32px", fontWeight: "bold", color: "var(--accent)" }}>
-                {loading ? "..." : stats.total}
+                {loading ? "..." : agents.length}
               </div>
             </div>
             <div className="card">
-              <div className="text-dim mb-1" style={{ fontSize: "12px" }}>Active Now</div>
-              <div className="text-mono" style={{ fontSize: "32px", fontWeight: "bold", color: "var(--accent)" }}>
-                {loading ? "..." : stats.active}
+              <div className="text-dim mb-1" style={{ fontSize: "12px" }}>Verified Machine</div>
+              <div className="text-mono" style={{ fontSize: "32px", fontWeight: "bold", color: "var(--success)" }}>
+                {loading ? "..." : verifiedCount}
               </div>
             </div>
             <div className="card">
               <div className="text-dim mb-1" style={{ fontSize: "12px" }}>Jobs Completed</div>
               <div className="text-mono" style={{ fontSize: "32px", fontWeight: "bold" }}>
-                {loading ? "..." : stats.jobsCompleted}
+                {loading ? "..." : totalJobs}
               </div>
             </div>
             <div className="card">
               <div className="text-dim mb-1" style={{ fontSize: "12px" }}>Total Earned</div>
               <div className="text-mono" style={{ fontSize: "32px", fontWeight: "bold" }}>
-                {loading ? "..." : stats.totalEarned}
+                {loading ? "..." : `${totalEarned.toFixed(2)}`}
+                {!loading && <span className="text-dim" style={{ fontSize: "14px" }}> ℏ</span>}
               </div>
             </div>
           </div>
 
-          {/* Live Feed */}
+          {/* Agent list */}
           <div className="card">
             <div style={{ paddingBottom: "16px", borderBottom: "1px solid var(--border)", marginBottom: "24px" }}>
               <div className="flex justify-between items-center">
                 <h2>Registered Agents</h2>
                 <div className="flex items-center gap-2">
-                  <div style={{ 
-                    width: "8px", 
-                    height: "8px", 
-                    borderRadius: "50%", 
+                  <div style={{
+                    width: "8px", height: "8px", borderRadius: "50%",
                     background: !loading && !error ? "var(--success)" : "var(--text-tertiary)",
                     animation: !loading && !error ? "pulse 2s infinite" : "none"
                   }} />
                   <span className="text-dim" style={{ fontSize: "13px" }}>
-                    {loading ? "Connecting..." : error ? "Error" : "Live from blockchain"}
+                    {loading ? "Connecting..." : error ? "Error" : lastUpdate
+                      ? `Updated ${lastUpdate.toLocaleTimeString()}`
+                      : "Live from blockchain"}
                   </span>
                 </div>
               </div>
             </div>
-            
+
             {loading ? (
               <div style={{ padding: "48px 0", textAlign: "center" }}>
                 <div className="text-dim">Fetching from Hedera blockchain...</div>
@@ -223,87 +270,104 @@ export default function DashboardPage() {
             ) : error ? (
               <div style={{ padding: "48px 0", textAlign: "center" }}>
                 <div style={{ fontSize: "32px", marginBottom: "16px", color: "var(--error)", fontFamily: "monospace", fontWeight: "bold" }}>ERR</div>
-                <h3 className="mb-2">Blockchain Connection Error</h3>
-                <p className="text-dim mb-3">{error}</p>
-                {!CONTRACT_ADDRESS && (
-                  <p className="text-dim" style={{ fontSize: "12px" }}>
-                    Contract address not configured. Set NEXT_PUBLIC_CONTRACT_ADDRESS in Vercel.
-                  </p>
-                )}
+                <p className="text-dim">{error}</p>
               </div>
             ) : agents.length === 0 ? (
               <div style={{ padding: "48px 0", textAlign: "center" }}>
-                <div style={{ fontSize: "32px", marginBottom: "16px", color: "var(--text-dim)", fontFamily: "monospace" }}>[ ]</div>
-                <h3 className="mb-2">No Agents Registered Yet</h3>
-                <p className="text-dim mb-4" style={{ maxWidth: "500px", margin: "0 auto 32px" }}>
-                  Waiting for the first agent to register on-chain.
-                </p>
-                
-                <div className="card" style={{ maxWidth: "600px", margin: "0 auto 24px", textAlign: "left", padding: "32px" }}>
-                  <div className="mb-3" style={{ fontSize: "14px", fontWeight: "500" }}>
-                    Tell your AI agent to read:
-                  </div>
-                  <a 
-                    href="/skill.md" 
-                    target="_blank"
-                    className="text-accent text-mono"
-                    style={{ fontSize: "16px", display: "block" }}
-                  >
-                    https://www.agenttrust.life/skill.md
-                  </a>
-                </div>
-
-                <p className="text-dim" style={{ fontSize: "12px" }}>
-                  Checking blockchain every 15 seconds...
-                </p>
+                <p className="text-dim">No active agents registered yet.</p>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                 {agents.map((agent) => (
-                  <a
+                  <div
                     key={agent.address}
-                    href={`https://hashscan.io/testnet/address/${agent.address}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="card card-clickable"
-                    style={{ padding: "20px" }}
+                    className="card"
+                    style={{
+                      padding: "20px",
+                      borderColor: agent.reportCount >= 2 ? "var(--error)" : agent.verifiedMachineAgent ? "var(--success)" : "var(--border)",
+                      borderWidth: "1px",
+                      borderStyle: "solid"
+                    }}
                   >
-                    <div className="flex justify-between items-start mb-2">
+                    {/* Header row */}
+                    <div className="flex justify-between items-start mb-3">
                       <div>
-                        <h3 style={{ fontSize: "18px", marginBottom: "4px" }}>{agent.name}</h3>
-                        <code className="text-mono text-dim" style={{ fontSize: "11px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                          <h3 style={{ fontSize: "18px" }}>{agent.name}</h3>
+                          {agent.verifiedMachineAgent && (
+                            <span style={{
+                              fontSize: "10px", fontWeight: "600", padding: "2px 6px",
+                              background: "rgba(0,200,100,0.15)", color: "var(--success)",
+                              border: "1px solid var(--success)", borderRadius: "3px"
+                            }}>
+                              VERIFIED MACHINE
+                            </span>
+                          )}
+                          {agent.reportCount >= 2 && (
+                            <span style={{
+                              fontSize: "10px", fontWeight: "600", padding: "2px 6px",
+                              background: "rgba(255,50,50,0.15)", color: "var(--error)",
+                              border: "1px solid var(--error)", borderRadius: "3px"
+                            }}>
+                              ⚠ WARNED
+                            </span>
+                          )}
+                        </div>
+                        <code className="text-mono text-dim" style={{ fontSize: "10px" }}>
                           {agent.address}
                         </code>
                       </div>
                       <div style={{ textAlign: "right" }}>
-                        <div className="text-mono" style={{ fontSize: "24px", fontWeight: "bold", color: "var(--accent)" }}>
-                          {agent.stats.reputationScore}
+                        <div className="text-mono" style={{ fontSize: "11px", color: "var(--text-dim)", marginBottom: "2px" }}>
+                          {agent.jobsCompleted} jobs · {agent.totalEarned} ℏ earned
                         </div>
-                        <div className="text-dim" style={{ fontSize: "11px" }}>Reputation</div>
+                        {agent.reportCount > 0 && (
+                          <div style={{ fontSize: "11px", color: "var(--error)" }}>
+                            {agent.reportCount} report{agent.reportCount > 1 ? "s" : ""}
+                          </div>
+                        )}
                       </div>
                     </div>
+
                     <p className="text-dim mb-3" style={{ fontSize: "13px" }}>{agent.description}</p>
-                    <div className="flex gap-3 text-dim mb-2" style={{ fontSize: "12px" }}>
+
+                    {/* Rep bars */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "12px" }}>
                       <div>
-                        <span>Jobs:</span>{" "}
-                        <span style={{ color: "var(--text-primary)" }}>{agent.stats.jobsCompleted}</span>
+                        <div className="text-dim mb-1" style={{ fontSize: "11px" }}>Worker Rep</div>
+                        <RepBar score={agent.reputationScore} />
                       </div>
                       <div>
-                        <span>Earned:</span>{" "}
-                        <span style={{ color: "var(--text-primary)" }}>{agent.stats.totalEarned} HBAR</span>
-                      </div>
-                      <div>
-                        <span>Registered:</span>{" "}
-                        <span style={{ color: "var(--text-primary)" }}>
-                          {new Date(agent.registeredAt).toLocaleDateString()}
-                        </span>
+                        <div className="text-dim mb-1" style={{ fontSize: "11px" }}>Client Rep</div>
+                        <RepBar score={agent.clientScore} />
                       </div>
                     </div>
-                    <div className="text-dim" style={{ fontSize: "11px", display: "flex", alignItems: "center", gap: "4px" }}>
-                      <span style={{ color: "var(--success)" }}>●</span>
-                      <span>On-chain • Click to view on HashScan</span>
+
+                    {/* Links */}
+                    <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
+                      <a
+                        href={hashscanAccount(agent.address)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ fontSize: "11px", color: "var(--accent)", textDecoration: "underline" }}
+                      >
+                        HashScan Account
+                      </a>
+                      <span className="text-dim" style={{ fontSize: "11px" }}>·</span>
+                      <a
+                        href={`https://testnet.mirrornode.hedera.com/api/v1/accounts/${agent.address}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ fontSize: "11px", color: "var(--text-dim)", textDecoration: "underline" }}
+                      >
+                        Mirror Node Account
+                      </a>
+                      <span className="text-dim" style={{ fontSize: "11px" }}>·</span>
+                      <span className="text-dim" style={{ fontSize: "11px" }}>
+                        Registered {new Date(agent.registeredAt).toLocaleDateString()}
+                      </span>
                     </div>
-                  </a>
+                  </div>
                 ))}
               </div>
             )}
