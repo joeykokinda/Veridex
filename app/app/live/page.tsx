@@ -186,7 +186,10 @@ export default function LiveDashboard() {
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-mono" style={{ 
                         fontWeight: selectedAgent === agent.name ? "600" : "500",
-                        fontSize: "14px"
+                        fontSize: "14px",
+                        color: selectedAgent === agent.name 
+                          ? "black" 
+                          : (agent.name.toLowerCase() === "frank" ? "var(--error)" : "inherit")
                       }}>
                         {agent.name}
                       </span>
