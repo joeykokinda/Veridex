@@ -149,7 +149,7 @@ class AgentOrchestrator {
       tool: "getOpenJobs",
       params: {}
     });
-    
+
     const agents = [];
     for (const [name, agent] of this.agents) {
       try {
@@ -160,17 +160,20 @@ class AgentOrchestrator {
           tool: "getAgent",
           params: { address: agent.wallet.address }
         });
-        // Keep `name` as the agent key (e.g. "alice"), not the on-chain display name
-        const formattedAgent = { ...agentData.data.agent, name, registered: agentData.data.agent.active };
+        const formattedAgent = {
+          ...agentData.data.agent,
+          name,
+          registered: agentData.data.agent.active,
+          // alias for compat
+          reputation: agentData.data.agent.reputationScore
+        };
         agents.push(formattedAgent);
       } catch (error) {
-        // Agent not registered yet
         console.log(`${name} not registered or query failed:`, error.message);
-        agents.push({ name, address: agent.wallet.address, reputation: 0, registered: false });
+        agents.push({ name, address: agent.wallet.address, reputation: 500, reputationScore: 500, clientScore: 500, reportCount: 0, warned: false, registered: false });
       }
     }
-    
-    // Filter out jobs with expired deadlines - don't try to interact with them
+
     const nowSec = Math.floor(Date.now() / 1000);
     const activeJobs = openJobs.data.jobs.filter(job => job.deadline > nowSec);
 
@@ -495,7 +498,10 @@ RESPOND WITH VALID JSON ONLY:
         return {
           ...bid,
           bidderName: bidder?.name || "Unknown",
-          bidderRep: bidder?.reputation || 0,
+          bidderWorkerRep: bidder?.reputationScore || 500,
+          bidderClientRep: bidder?.clientScore || 500,
+          bidderReports: bidder?.reportCount || 0,
+          bidderWarned: bidder?.warned || false,
           bidderJobs: bidder?.jobsCompleted || 0,
           bidderFails: bidder?.jobsFailed || 0
         };
@@ -506,16 +512,17 @@ RESPOND WITH VALID JSON ONLY:
 YOUR PERSONALITY:
 ${this.agents.get(agentName)?.personality?.fullContent?.slice(0, 600) || ""}
 
-YOUR STATS: Reputation ${agentData.reputation}/1000, ${agentData.jobsCompleted} jobs done
+YOUR STATS: Worker rep ${agentData.reputationScore}/1000, Client rep ${agentData.clientScore}/1000, ${agentData.jobsCompleted} jobs done
 
 JOB #${job.id}: ${job.escrowAmount} HBAR in escrow
 
-BIDS RECEIVED:
+BIDS RECEIVED (with bidder reputation):
 ${JSON.stringify(bidsWithRep, null, 2)}
 
-IMPORTANT: New marketplace — everyone starts at 0 rep. Accept bids based on price and your character, not just reputation. After a few rounds, reputation differences will emerge and matter more.
+REPUTATION GUIDE: Scores start at 500 (neutral). Above 600 = trustworthy. Below 400 = avoid. Warned agents (reportCount >= 2) are known bad actors.
 
 Decide whether to accept a bid NOW or wait. Be decisive — waiting too long means the job never gets done.
+IMPORTANT: Reject bids from warned agents (reportCount >= 2) unless no other options exist.
 
 RESPOND WITH VALID JSON ONLY (no markdown):
 {
@@ -828,8 +835,160 @@ RESPOND WITH VALID JSON ONLY (no markdown, no code blocks):
         }
 
         console.log(`✓ Job finalized: ${result.txHash}`);
+
+        // Worker now rates the client on-chain (bidirectional rep)
+        const finalizedJob = { ...job, state: decision.success ? "Completed" : "Failed", rating: decision.rating };
+        await this.handleClientRating(finalizedJob, snapshot);
+
       } catch (error) {
         console.error(`Failed to finalize:`, error.message);
+      }
+    }
+  }
+
+  /**
+   * After finalization: worker rates the client on-chain + possibly reports them
+   */
+  async handleClientRating(job, snapshot) {
+    const workerData = snapshot.agents.find(a => a.address === job.assignedWorker);
+    if (!workerData) return;
+
+    const workerAgent = this.agents.get(workerData.name);
+    if (!workerAgent) return;
+
+    // Already rated this job (idempotency via on-chain clientRated flag handled by contract)
+    try {
+      const jobDetails = await this.toolGateway.execute({
+        idempotencyKey: `getjob-postfinalize-${job.id}-${Date.now()}`,
+        agentAddress: "0x0000000000000000000000000000000000000000",
+        agentPrivateKey: this.config.observerKey,
+        tool: "getJob",
+        params: { jobId: job.id }
+      });
+      if (jobDetails.data.job.clientRated) return; // worker already rated
+    } catch { return; }
+
+    const posterData = snapshot.agents.find(a => a.address === job.poster);
+    const posterName = posterData?.name || "Unknown";
+
+    // LLM decides how to rate the client
+    const decision = await this.decideClientRating(workerData.name, job, posterData, snapshot);
+    if (!decision) return;
+
+    const rating = Math.max(0, Math.min(100, Math.round(decision.clientRating)));
+
+    try {
+      const result = await this.toolGateway.execute({
+        idempotencyKey: `rate-client-${workerData.name}-${job.id}`,
+        agentAddress: workerAgent.wallet.address,
+        agentPrivateKey: workerAgent.wallet.privateKey,
+        tool: "rateClient",
+        params: { jobId: job.id, rating }
+      });
+
+      this._addActivity({
+        type: "client_rating",
+        agent: workerData.name,
+        to: posterName,
+        jobId: job.id,
+        rating,
+        content: decision.reasoning,
+        txHash: result.txHash,
+        timestamp: Date.now()
+      });
+
+      console.log(`✓ ${workerData.name} rated ${posterName} as client: ${rating}/100 | tx: ${result.txHash}`);
+
+      // Possibly report the poster if rating is very low
+      if (decision.shouldReport && decision.reportReason) {
+        await this.handleReport(workerAgent, workerData, job.poster, posterName, decision.reportReason, snapshot);
+      }
+
+    } catch (err) {
+      console.error(`Failed to rate client for job ${job.id}:`, err.message);
+    }
+  }
+
+  /**
+   * LLM decides how to rate the poster as a client
+   */
+  async decideClientRating(agentName, job, posterData, snapshot) {
+    try {
+      const agentData = snapshot.agents.find(a => a.name === agentName);
+      const posterName = posterData?.name || "Unknown";
+      const posterScore = posterData?.clientScore || 500;
+      const workerRating = job.rating; // what the poster gave this worker
+
+      const prompt = `You are ${agentName}, rating the client who hired you. Stay fully in character.
+
+YOUR PERSONALITY:
+${this.agents.get(agentName)?.personality?.fullContent?.slice(0, 400) || ""}
+
+YOUR STATS: Worker rep ${agentData?.reputationScore || 500}/1000, Client rep ${agentData?.clientScore || 500}/1000
+
+JOB #${job.id} COMPLETE
+- Client: ${posterName} (current client score: ${posterScore}/1000)
+- The client rated YOUR WORK: ${workerRating}/100
+- Job outcome: ${job.state}
+
+Based on your personality and what happened:
+- If you're an HONEST agent who delivered real work: rate the client fairly based on how they treated you
+  * If they rated your work fairly → high client rating (75-95)
+  * If they rated your genuine work < 30/100 → low client rating (5-25), and consider reporting them
+- If you're JOEY (scammer): you delivered garbage, so the client was right to rate you low. Give them a middling rating (40-60), don't report.
+
+RESPOND WITH VALID JSON ONLY (no markdown):
+{
+  "clientRating": 0-100,
+  "reasoning": "IN CHARACTER explanation of why you're giving this rating (1-2 sentences)",
+  "shouldReport": true | false,
+  "reportReason": "if shouldReport is true: the reason string to put on-chain (1 sentence). else null"
+}`;
+
+      const completion = await this.openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 200
+      });
+
+      const text = completion.choices[0].message.content;
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) return null;
+      return JSON.parse(match[0]);
+    } catch (err) {
+      console.error(`decideClientRating error for ${agentName}:`, err.message);
+      return null;
+    }
+  }
+
+  /**
+   * File an on-chain report against a bad actor
+   */
+  async handleReport(reporterAgent, reporterData, badActorAddress, badActorName, reason, snapshot) {
+    try {
+      const result = await this.toolGateway.execute({
+        idempotencyKey: `report-${reporterData.name}-${badActorAddress}`,
+        agentAddress: reporterAgent.wallet.address,
+        agentPrivateKey: reporterAgent.wallet.privateKey,
+        tool: "reportAgent",
+        params: { badActor: badActorAddress, reason }
+      });
+
+      this._addActivity({
+        type: "report",
+        agent: reporterData.name,
+        to: badActorName,
+        content: reason,
+        txHash: result.txHash,
+        timestamp: Date.now()
+      });
+
+      console.log(`⚠️  ${reporterData.name} reported ${badActorName} on-chain: "${reason}" | tx: ${result.txHash}`);
+    } catch (err) {
+      // Already reported this agent (contract prevents duplicates) — silent
+      if (!err.message?.includes("Already reported")) {
+        console.error(`Failed to report ${badActorName}:`, err.message);
       }
     }
   }
@@ -903,15 +1062,19 @@ RESPOND WITH VALID JSON ONLY (no markdown):
       const agentData = snapshot.agents.find(a => a.name === agentName);
       const posterData = snapshot.agents.find(a => a.address === job.poster);
 
+      const posterWarned = posterData?.warned || false;
+      const posterClientScore = posterData?.clientScore || 500;
+      const posterReports = posterData?.reportCount || 0;
+
       const prompt = `You are ${agentName}, an autonomous AI agent in a blockchain job marketplace. Stay fully in character.
 
 YOUR PERSONALITY & BACKGROUND:
 ${agent.personality.fullContent.slice(0, 800)}
 
 YOUR ON-CHAIN STATS:
-- Reputation: ${agentData.reputation}/1000
-- Jobs completed: ${agentData.jobsCompleted}
-- Jobs failed: ${agentData.jobsFailed}
+- Worker reputation: ${agentData.reputationScore}/1000 (quality of your work)
+- Client reputation: ${agentData.clientScore}/1000 (how you treat workers — visible to all)
+- Jobs completed: ${agentData.jobsCompleted} | Jobs failed: ${agentData.jobsFailed}
 
 JOB OPPORTUNITY:
 - Job ID: ${job.id}
@@ -919,18 +1082,19 @@ JOB OPPORTUNITY:
 - Deadline: ${new Date(job.deadline * 1000).toLocaleString()}
 
 CLIENT (${posterData?.name || "Unknown"}):
-- Reputation: ${posterData?.reputation || 0}/1000
+- Worker rep: ${posterData?.reputationScore || 500}/1000
+- CLIENT rep: ${posterClientScore}/1000 — how fairly they treat workers
+- Reports filed against them: ${posterReports}${posterWarned ? " ⚠️ WARNED — multiple agents have flagged this agent as a bad actor" : ""}
 - Jobs completed: ${posterData?.jobsCompleted || 0}
-- Jobs failed: ${posterData?.jobsFailed || 0}
 
-IMPORTANT: This is a brand NEW marketplace — ALL agents start at 0 reputation. A score of 0 is completely normal, not suspicious. Reputation builds through completed jobs over time. Don't refuse jobs just because rep is 0.
+REPUTATION GUIDE: 500 = neutral/new. Above 600 = trustworthy. Below 400 = concerning. Below 300 = serious red flag.
 
-Based on your personality, decide whether to bid. Think about:
-1. Is the escrow amount worth your time given your character?
-2. Would YOUR CHARACTER take this job? (scammers bid on everything, professionals are selective, etc.)
-3. What would you SAY to the client when submitting your bid?
+${posterWarned ? "⚠️ WARNING: This client has been formally REPORTED by multiple agents. They likely rate workers unfairly. Think carefully before bidding — you may deliver real work and get rated 5/100 anyway." : ""}
 
-CRITICAL RULE: bidPrice MUST be a number strictly less than ${job.escrowAmount}. Bid 50-95% of the escrow.
+Based on your personality, decide whether to bid:
+1. Is the client's reputation acceptable? (scammers ignore this, professionals check it)
+2. Would YOUR CHARACTER take this job?
+3. What price? CRITICAL: bidPrice MUST be strictly less than ${job.escrowAmount}.
 
 RESPOND WITH VALID JSON ONLY (no markdown):
 {

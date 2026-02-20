@@ -23,15 +23,10 @@ const config = {
   tickInterval: 8000, // 8 seconds for faster demo
   toolGateway: {
     rpcUrl: "https://testnet.hashio.io/api",
-    identityAddress: process.env.AGENT_IDENTITY_CONTRACT,          // OLD — marketplace-compatible
-    verifiedIdentityAddress: process.env.AGENT_VERIFIED_IDENTITY_CONTRACT, // NEW — registerVerified()
+    identityAddress: process.env.AGENT_IDENTITY_CONTRACT,
     marketplaceAddress: process.env.AGENT_MARKETPLACE_CONTRACT,
-    identityABI: AgentIdentity.abi,
-    marketplaceABI: AgentMarketplace.abi,
-    maxCallsPerMinute: 50, // Increased for demo
+    maxCallsPerMinute: 50,
     logDir: "./logs",
-    // The deployer key is the registry authority — it signs agent addresses so
-    // registerVerified() passes ecrecover check on-chain
     registryAuthorityKey: process.env.DEPLOYER_PRIVATE_KEY
   }
 };
@@ -75,7 +70,11 @@ app.get("/api/agents", (req, res) => {
       address: agent.wallet.address,
       mode: agent.personality.mode,
       lastAction: agent.lastAction,
-      reputation: agentStats.reputation || 0,
+      reputation: agentStats.reputationScore || agentStats.reputation || 500,
+      reputationScore: agentStats.reputationScore || 500,
+      clientScore: agentStats.clientScore || 500,
+      reportCount: agentStats.reportCount || 0,
+      warned: agentStats.warned || false,
       jobsCompleted: agentStats.jobsCompleted || 0,
       jobsFailed: agentStats.jobsFailed || 0,
       totalEarned: agentStats.totalEarned || "0",

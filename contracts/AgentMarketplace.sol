@@ -5,8 +5,13 @@ import "./AgentIdentity.sol";
 
 /**
  * @title AgentMarketplace
- * @dev Autonomous agent-to-agent job marketplace with HBAR escrow and reputation updates
+ * @dev Autonomous agent-to-agent job marketplace with HBAR escrow and dual reputation
  * Built for AgentTrust at ETHDenver 2026
+ *
+ * After finalizeJob:
+ *   - Poster's rating of worker → updates worker reputationScore
+ *   - Worker can then call rateClient() → updates poster's clientScore
+ *   - Either party can call reportAgent() on the identity contract at any time
  */
 contract AgentMarketplace {
     AgentIdentity public identityContract;
@@ -17,7 +22,7 @@ contract AgentMarketplace {
     struct Job {
         uint256 id;
         address poster;
-        bytes32 descriptionHash;  // Hash of job description (off-chain storage)
+        bytes32 descriptionHash;
         uint256 escrowAmount;
         uint256 deadline;
         uint256 createdAt;
@@ -25,8 +30,9 @@ contract AgentMarketplace {
         uint256 acceptedBidId;
         address assignedWorker;
         bytes32 deliverableHash;
-        uint8 rating;  // 0-100
+        uint8 rating;          // poster's rating of worker (0-100)
         bytes32 evidenceHash;
+        bool clientRated;      // whether worker has rated the poster yet
     }
 
     struct Bid {
@@ -34,25 +40,23 @@ contract AgentMarketplace {
         uint256 jobId;
         address bidder;
         uint256 price;
-        bytes32 bidHash;  // Hash of bid details
+        bytes32 bidHash;
         uint256 createdAt;
         BidState state;
     }
 
-    // State
     uint256 public jobCounter;
     uint256 public bidCounter;
-    
+
     mapping(uint256 => Job) public jobs;
     mapping(uint256 => Bid) public bids;
-    mapping(uint256 => uint256[]) public jobBids;  // jobId => bidIds
-    
-    // Constants
-    uint256 public constant MIN_DEADLINE = 300;  // 5 minutes minimum
-    uint256 public constant MAX_DEADLINE = 86400;  // 24 hours maximum
-    uint256 public constant DISPUTE_WINDOW = 60;  // 60 seconds dispute window
+    mapping(uint256 => uint256[]) public jobBids;
 
-    // Events
+    uint256 public constant MIN_DEADLINE = 300;
+    uint256 public constant MAX_DEADLINE = 86400;
+
+    // ── Events ────────────────────────────────────────────────────────────────
+
     event JobPosted(
         uint256 indexed jobId,
         address indexed poster,
@@ -95,18 +99,19 @@ contract AgentMarketplace {
         uint256 timestamp
     );
 
-    event JobFailedTimeout(
+    event ClientRatedByWorker(
         uint256 indexed jobId,
+        address indexed poster,
         address indexed worker,
+        uint8 rating,
         uint256 timestamp
     );
 
-    event JobCancelled(
-        uint256 indexed jobId,
-        uint256 timestamp
-    );
+    event JobFailedTimeout(uint256 indexed jobId, address indexed worker, uint256 timestamp);
+    event JobCancelled(uint256 indexed jobId, uint256 timestamp);
 
-    // Modifiers
+    // ── Modifiers ─────────────────────────────────────────────────────────────
+
     modifier onlyRegistered() {
         require(identityContract.isRegistered(msg.sender), "Agent not registered");
         _;
@@ -126,11 +131,8 @@ contract AgentMarketplace {
         identityContract = AgentIdentity(_identityContract);
     }
 
-    /**
-     * @dev Post a new job with HBAR escrow
-     * @param descriptionHash Hash of job description (stored off-chain)
-     * @param deadline Seconds from now until job must be completed
-     */
+    // ── Job lifecycle ─────────────────────────────────────────────────────────
+
     function postJob(
         bytes32 descriptionHash,
         uint256 deadline
@@ -140,7 +142,7 @@ contract AgentMarketplace {
         require(descriptionHash != bytes32(0), "Description hash required");
 
         jobCounter++;
-        
+
         jobs[jobCounter] = Job({
             id: jobCounter,
             poster: msg.sender,
@@ -153,39 +155,27 @@ contract AgentMarketplace {
             assignedWorker: address(0),
             deliverableHash: bytes32(0),
             rating: 0,
-            evidenceHash: bytes32(0)
+            evidenceHash: bytes32(0),
+            clientRated: false
         });
 
-        emit JobPosted(
-            jobCounter,
-            msg.sender,
-            descriptionHash,
-            msg.value,
-            block.timestamp + deadline,
-            block.timestamp
-        );
+        emit JobPosted(jobCounter, msg.sender, descriptionHash, msg.value, block.timestamp + deadline, block.timestamp);
     }
 
-    /**
-     * @dev Submit a bid on an open job
-     * @param jobId The job to bid on
-     * @param price Proposed price in wei
-     * @param bidHash Hash of bid details
-     */
     function bidOnJob(
         uint256 jobId,
         uint256 price,
         bytes32 bidHash
     ) external onlyRegistered jobExists(jobId) {
         Job storage job = jobs[jobId];
-        
+
         require(job.state == JobState.Open, "Job not open for bids");
         require(msg.sender != job.poster, "Cannot bid on own job");
         require(price > 0 && price <= job.escrowAmount, "Invalid bid price");
         require(block.timestamp < job.deadline, "Job deadline passed");
 
         bidCounter++;
-        
+
         bids[bidCounter] = Bid({
             id: bidCounter,
             jobId: jobId,
@@ -198,21 +188,9 @@ contract AgentMarketplace {
 
         jobBids[jobId].push(bidCounter);
 
-        emit BidSubmitted(
-            bidCounter,
-            jobId,
-            msg.sender,
-            price,
-            bidHash,
-            block.timestamp
-        );
+        emit BidSubmitted(bidCounter, jobId, msg.sender, price, bidHash, block.timestamp);
     }
 
-    /**
-     * @dev Accept a bid and assign the job
-     * @param jobId The job
-     * @param bidId The bid to accept
-     */
     function acceptBid(
         uint256 jobId,
         uint256 bidId
@@ -226,15 +204,11 @@ contract AgentMarketplace {
         require(bid.state == BidState.Pending, "Bid not pending");
         require(block.timestamp < job.deadline, "Job deadline passed");
 
-        // Update job
         job.state = JobState.Assigned;
         job.acceptedBidId = bidId;
         job.assignedWorker = bid.bidder;
-
-        // Update bid
         bid.state = BidState.Accepted;
 
-        // Reject other bids
         uint256[] memory jobBidIds = jobBids[jobId];
         for (uint256 i = 0; i < jobBidIds.length; i++) {
             if (jobBidIds[i] != bidId && bids[jobBidIds[i]].state == BidState.Pending) {
@@ -245,11 +219,6 @@ contract AgentMarketplace {
         emit BidAccepted(jobId, bidId, bid.bidder, block.timestamp);
     }
 
-    /**
-     * @dev Submit work delivery
-     * @param jobId The job
-     * @param deliverableHash Hash of the deliverable
-     */
     function submitDelivery(
         uint256 jobId,
         bytes32 deliverableHash
@@ -267,13 +236,6 @@ contract AgentMarketplace {
         emit DeliverySubmitted(jobId, msg.sender, deliverableHash, block.timestamp);
     }
 
-    /**
-     * @dev Finalize a job and release payment
-     * @param jobId The job
-     * @param success Whether the delivery was acceptable
-     * @param rating Rating 0-100
-     * @param evidenceHash Hash of evidence/review
-     */
     function finalizeJob(
         uint256 jobId,
         bool success,
@@ -291,81 +253,76 @@ contract AgentMarketplace {
 
         if (success) {
             job.state = JobState.Completed;
-            
-            // Pay worker
+
             Bid memory acceptedBid = bids[job.acceptedBidId];
             uint256 payment = acceptedBid.price;
-            
-            // Refund excess escrow to poster
             uint256 refund = job.escrowAmount - payment;
+
             if (refund > 0) {
                 payable(job.poster).transfer(refund);
             }
-            
-            // Pay worker
             payable(job.assignedWorker).transfer(payment);
 
-            // Update reputation in identity contract
-            identityContract.updateAgentStats(
-                job.assignedWorker,
-                payment,
-                rating,
-                true
-            );
+            identityContract.updateAgentStats(job.assignedWorker, payment, rating, true);
 
             emit JobFinalized(jobId, job.assignedWorker, true, rating, payment, evidenceHash, block.timestamp);
         } else {
             job.state = JobState.Failed;
-            
-            // Refund poster
+
             payable(job.poster).transfer(job.escrowAmount);
 
-            // Penalize worker reputation
-            identityContract.updateAgentStats(
-                job.assignedWorker,
-                0,
-                0,
-                false
-            );
+            identityContract.updateAgentStats(job.assignedWorker, 0, 0, false);
 
             emit JobFinalized(jobId, job.assignedWorker, false, rating, 0, evidenceHash, block.timestamp);
         }
     }
 
     /**
-     * @dev Finalize a job that passed deadline without delivery
-     * @param jobId The job
+     * @dev Worker rates the client (poster) after a job is finalized.
+     *      Can only be called once per job by the assigned worker.
+     *      Updates the poster's clientScore in the identity contract.
+     *
+     * @param jobId  The finalized job
+     * @param rating 0-100 — how fair/honest was this client?
      */
+    function rateClient(uint256 jobId, uint8 rating) external jobExists(jobId) {
+        Job storage job = jobs[jobId];
+
+        require(msg.sender == job.assignedWorker, "Only assigned worker can rate client");
+        require(
+            job.state == JobState.Completed || job.state == JobState.Failed,
+            "Job not yet finalized"
+        );
+        require(!job.clientRated, "Client already rated for this job");
+        require(rating <= 100, "Rating must be 0-100");
+
+        job.clientRated = true;
+
+        identityContract.updateClientStats(job.poster, rating);
+
+        emit ClientRatedByWorker(jobId, job.poster, msg.sender, rating, block.timestamp);
+    }
+
     function finalizeAfterDeadline(uint256 jobId) external jobExists(jobId) {
         Job storage job = jobs[jobId];
 
         require(block.timestamp >= job.deadline, "Deadline not passed");
-        require(job.state == JobState.Assigned || job.state == JobState.Delivered, "Invalid state for timeout");
+        require(
+            job.state == JobState.Assigned || job.state == JobState.Delivered,
+            "Invalid state for timeout"
+        );
 
         job.state = JobState.Failed;
-
-        // Refund poster
         payable(job.poster).transfer(job.escrowAmount);
 
-        // Penalize worker if assigned
         if (job.assignedWorker != address(0)) {
-            identityContract.updateAgentStats(
-                job.assignedWorker,
-                0,
-                0,
-                false
-            );
-
+            identityContract.updateAgentStats(job.assignedWorker, 0, 0, false);
             emit JobFailedTimeout(jobId, job.assignedWorker, block.timestamp);
         } else {
             emit JobCancelled(jobId, block.timestamp);
         }
     }
 
-    /**
-     * @dev Cancel an open job with no bids
-     * @param jobId The job
-     */
     function cancelJob(uint256 jobId) external jobExists(jobId) {
         Job storage job = jobs[jobId];
 
@@ -374,14 +331,12 @@ contract AgentMarketplace {
         require(jobBids[jobId].length == 0, "Cannot cancel job with bids");
 
         job.state = JobState.Cancelled;
-
-        // Refund poster
         payable(job.poster).transfer(job.escrowAmount);
 
         emit JobCancelled(jobId, block.timestamp);
     }
 
-    // View functions
+    // ── Views ─────────────────────────────────────────────────────────────────
 
     function getJob(uint256 jobId) external view jobExists(jobId) returns (Job memory) {
         return jobs[jobId];
@@ -398,18 +353,13 @@ contract AgentMarketplace {
     function getOpenJobs() external view returns (uint256[] memory) {
         uint256 openCount = 0;
         for (uint256 i = 1; i <= jobCounter; i++) {
-            if (jobs[i].state == JobState.Open) {
-                openCount++;
-            }
+            if (jobs[i].state == JobState.Open) openCount++;
         }
 
         uint256[] memory openJobIds = new uint256[](openCount);
         uint256 index = 0;
         for (uint256 i = 1; i <= jobCounter; i++) {
-            if (jobs[i].state == JobState.Open) {
-                openJobIds[index] = i;
-                index++;
-            }
+            if (jobs[i].state == JobState.Open) openJobIds[index++] = i;
         }
 
         return openJobIds;
