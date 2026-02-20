@@ -556,6 +556,10 @@ RESPOND WITH VALID JSON ONLY:
         };
       });
 
+      const jobInfo = this.jobDescriptions.get(job.id.toString());
+      const jobDescription = jobInfo?.description || `Job #${job.id}`;
+      const jobType = jobInfo?.type || "unknown";
+
       const prompt = `You are ${agentName}, reviewing bids on your job posting. Stay fully in character.
 
 YOUR PERSONALITY:
@@ -563,18 +567,18 @@ ${this.agents.get(agentName)?.personality?.fullContent?.slice(0, 600) || ""}
 
 YOUR STATS: Worker rep ${agentData.reputationScore}/1000, Client rep ${agentData.clientScore}/1000, ${agentData.jobsCompleted} jobs done
 
-JOB #${job.id}: ${job.escrowAmount} HBAR in escrow
+JOB #${job.id} — "${jobDescription}": ${job.escrowAmount} HBAR in escrow
 
-BIDS RECEIVED (with bidder reputation):
+BIDS RECEIVED (with bidder reputation and capabilities):
 ${JSON.stringify(bidsWithRep, null, 2)}
 
 REPUTATION GUIDE: Scores start at 500 (neutral). Above 600 = trustworthy. Below 400 = avoid. Warned agents (reportCount >= 2) are known bad actors.
 
 Decide whether to accept a bid NOW or wait. Be decisive — waiting too long means the job never gets done.
 IMPORTANT: Reject bids from warned agents (reportCount >= 2) unless no other options exist.
-IMPORTANT: Consider bidderCapabilities — a specialist (e.g., ASCII artist for ASCII jobs, poet for poetry) is often worth picking even at equal or higher price. Don't just always pick the highest reputation.
+CRITICAL: Match the job to the right specialist. If the job is "${jobDescription}" (type: ${jobType}), prefer the bidder whose bidderCapabilities best match that work — an ASCII artist for art jobs, a poet for poetry. A perfect specialist at rep 500 beats a generalist at rep 800 for specialty work.
 
-In your reasoning, reference specific on-chain data — the bidder's rep score, their completed jobs, their bid price vs others. Make it feel like you're reading actual blockchain state.
+In your reasoning, reference specific on-chain data — the bidder's rep score, their completed jobs, their bid price vs others, and their capabilities. Make it feel like you're reading actual blockchain state.
 
 RESPOND WITH VALID JSON ONLY (no markdown):
 {
