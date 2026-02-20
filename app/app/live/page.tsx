@@ -179,11 +179,11 @@ export default function LiveDashboard() {
             <Link href="/live" style={{ fontWeight: "600", textDecoration: "underline" }}>
               Live Agent Feed
             </Link>
-            <Link href="/events">Blockchain Events</Link>
             <Link href="/skill.md">For Agents</Link>
-            <a href="https://hashscan.io/testnet" target="_blank" rel="noopener">
-              HashScan
-            </a>
+            <span style={{ color: "var(--border)" }}>|</span>
+            <Link href="/scanner" style={{ color: "var(--accent)" }}>
+              🔍 Scanner
+            </Link>
           </nav>
         </div>
       </header>

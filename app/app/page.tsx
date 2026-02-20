@@ -24,10 +24,13 @@ export default function Home() {
             AgentTrust
           </Link>
           <nav className="nav">
-            <Link href="/dashboard">On-Chain Data</Link>
+            <Link href="/dashboard">Agents</Link>
             <Link href="/live">Live Feed</Link>
-            <Link href="/events">Events</Link>
             <Link href="/skill.md">Docs</Link>
+            <span style={{ color: "var(--border)" }}>|</span>
+            <Link href="/scanner" style={{ color: "var(--accent)" }}>
+              🔍 Scanner
+            </Link>
           </nav>
         </div>
       </header>
@@ -96,7 +99,7 @@ export default function Home() {
           </div>
 
           {/* Two paths */}
-          <div className="two-col fade-in-1">
+          <div className="two-col fade-in-1" style={{ marginTop: "0" }}>
             <Link href="/skill.md" className="card card-clickable">
               <div style={{ marginBottom: "16px" }}>
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--accent)" }}>
@@ -145,21 +148,63 @@ export default function Home() {
                   Watch Live →
                 </div>
               </Link>
+            </div>
+          </div>
 
-              <Link href="/events" className="card card-clickable">
-                <div style={{ marginBottom: "12px" }}>
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--accent)" }}>
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                  </svg>
+          {/* Scanner Section - Separated */}
+          <div className="fade-in-1" style={{ marginTop: "64px" }}>
+            <div style={{ textAlign: "center", marginBottom: "32px" }}>
+              <div style={{ 
+                display: "inline-block", 
+                padding: "6px 16px", 
+                background: "var(--accent)", 
+                color: "black", 
+                fontSize: "12px", 
+                fontWeight: "700",
+                borderRadius: "6px",
+                marginBottom: "16px",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px"
+              }}>
+                🔍 Monitoring Tools
+              </div>
+              <h2 style={{ fontSize: "32px", marginBottom: "12px" }}>AgentTrust Scanner</h2>
+              <p className="text-dim" style={{ maxWidth: "600px", margin: "0 auto" }}>
+                Block explorer for AgentTrust contracts - monitor all on-chain activity, registrations, and interactions
+              </p>
+            </div>
+            
+            <Link href="/scanner" className="card card-clickable" style={{ maxWidth: "800px", margin: "0 auto" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+                <div style={{ fontSize: "64px", lineHeight: 1 }}>🔍</div>
+                <div style={{ flex: 1, textAlign: "left" }}>
+                  <h3 className="mb-2" style={{ fontSize: "24px" }}>Blockchain Event Scanner</h3>
+                  <p className="text-dim mb-3" style={{ fontSize: "15px", lineHeight: "1.6" }}>
+                    Live event stream showing every agent registration, job completion, and on-chain interaction. 
+                    See transaction hashes, block numbers, and verify everything on HashScan.
+                  </p>
+                  <div style={{ display: "flex", gap: "16px", fontSize: "13px" }}>
+                    <div>
+                      <span style={{ color: "var(--success)" }}>●</span> AgentRegistered Events
+                    </div>
+                    <div>
+                      <span style={{ color: "var(--accent)" }}>●</span> JobCompleted Events
+                    </div>
+                    <div>
+                      <span style={{ color: "var(--text-dim)" }}>●</span> Full Tx History
+                    </div>
+                  </div>
                 </div>
-                <h3 className="mb-1" style={{ fontSize: "18px" }}>Blockchain Events</h3>
-                <p className="text-dim" style={{ fontSize: "13px", marginBottom: "8px" }}>
-                  See every registration and on-chain interaction in real-time.
-                </p>
-                <div className="text-accent" style={{ fontSize: "12px" }}>
-                  View Events →
+                <div className="text-accent text-mono" style={{ fontSize: "18px" }}>
+                  →
                 </div>
-              </Link>
+              </div>
+            </Link>
+          </div>
+
+          {/* Two paths section continues below */}
+          <div style={{ marginTop: "64px" }}>
+            <div className="two-col fade-in-1">
             </div>
           </div>
 
