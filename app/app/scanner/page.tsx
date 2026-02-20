@@ -4,180 +4,202 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ethers } from "ethers";
 
-interface BlockchainEvent {
-  type: "AgentRegistered" | "JobCompleted" | "AgentUnregistered" | "BidPlaced" | "JobFinalized";
-  agentAddress: string;
-  agentName?: string;
-  timestamp: number;
-  blockNumber: number;
+interface ChainEvent {
+  type: string;
   txHash: string;
-  data: any;
+  blockNumber: number;
+  timestamp: number;
+  data: Record<string, string | number | boolean>;
 }
 
-// Contract ABIs with events
-const AGENT_IDENTITY_ABI = [
+const HEDERA_RPC = "https://testnet.hashio.io/api";
+const IDENTITY_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "";
+const MARKETPLACE_ADDRESS = process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS || "";
+
+const IDENTITY_ABI = [
   "event AgentRegistered(address indexed agentAddress, string name, uint256 timestamp)",
-  "event JobCompleted(address indexed agentAddress, uint256 payment, uint256 newReputation)",
   "event AgentUnregistered(address indexed agentAddress, uint256 timestamp)",
-  "function getAgent(address) external view returns (tuple(string name, string description, string capabilities, uint256 registeredAt, bool active, uint256 jobsCompleted, uint256 jobsFailed, uint256 totalEarned, uint256 reputationScore, uint256 totalRatings))"
+  "event JobCompleted(address indexed agentAddress, uint256 payment, uint256 newReputation)",
 ];
 
-const HEDERA_RPC = "https://testnet.hashio.io/api";
-const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "";
+const MARKETPLACE_ABI = [
+  "event JobPosted(uint256 indexed jobId, address indexed poster, bytes32 descriptionHash, uint256 escrowAmount, uint256 deadline, uint256 timestamp)",
+  "event BidSubmitted(uint256 indexed bidId, uint256 indexed jobId, address indexed bidder, uint256 price, bytes32 bidHash, uint256 timestamp)",
+  "event BidAccepted(uint256 indexed jobId, uint256 indexed bidId, address indexed worker, uint256 timestamp)",
+  "event DeliverySubmitted(uint256 indexed jobId, address indexed worker, bytes32 deliverableHash, uint256 timestamp)",
+  "event JobFinalized(uint256 indexed jobId, address indexed worker, bool success, uint8 rating, uint256 payment, bytes32 evidenceHash, uint256 timestamp)",
+  "event JobFailedTimeout(uint256 indexed jobId, address indexed worker, uint256 timestamp)",
+];
 
-export default function EventsPage() {
-  const [events, setEvents] = useState<BlockchainEvent[]>([]);
+// Known agent addresses (for display)
+const AGENT_NAMES: Record<string, string> = {};
+
+function shortAddr(addr: string) {
+  return `${addr.slice(0, 8)}...${addr.slice(-6)}`;
+}
+
+function eventColor(type: string) {
+  switch (type) {
+    case "AgentRegistered":   return "#4ade80";
+    case "AgentUnregistered": return "#f87171";
+    case "JobCompleted":      return "#60a5fa";
+    case "JobPosted":         return "#a78bfa";
+    case "BidSubmitted":      return "#fbbf24";
+    case "BidAccepted":       return "#34d399";
+    case "DeliverySubmitted": return "#f472b6";
+    case "JobFinalized":      return "#60a5fa";
+    case "JobFailedTimeout":  return "#f87171";
+    default:                  return "#94a3b8";
+  }
+}
+
+function eventLabel(type: string) {
+  switch (type) {
+    case "AgentRegistered":   return "REGISTER";
+    case "AgentUnregistered": return "UNREG";
+    case "JobCompleted":      return "COMPLETE";
+    case "JobPosted":         return "POST JOB";
+    case "BidSubmitted":      return "BID";
+    case "BidAccepted":       return "ACCEPTED";
+    case "DeliverySubmitted": return "DELIVER";
+    case "JobFinalized":      return "FINALIZE";
+    case "JobFailedTimeout":  return "TIMEOUT";
+    default:                  return "EVENT";
+  }
+}
+
+const FILTER_OPTIONS = [
+  { key: "all",              label: "All" },
+  { key: "JobPosted",        label: "Jobs Posted" },
+  { key: "BidSubmitted",     label: "Bids" },
+  { key: "BidAccepted",      label: "Accepted" },
+  { key: "DeliverySubmitted",label: "Deliveries" },
+  { key: "JobFinalized",     label: "Finalized" },
+  { key: "AgentRegistered",  label: "Registered" },
+];
+
+export default function ScannerPage() {
+  const [events, setEvents] = useState<ChainEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [stats, setStats] = useState({
-    totalEvents: 0,
-    registrations: 0,
-    jobsCompleted: 0,
-    lastBlock: 0
-  });
-  const [filter, setFilter] = useState<string>("all");
+  const [filter, setFilter] = useState("all");
+  const [lastBlock, setLastBlock] = useState(0);
 
   useEffect(() => {
-    if (!CONTRACT_ADDRESS) {
-      setError("Contract address not configured");
-      setLoading(false);
-      return;
-    }
-
     fetchEvents();
-    const interval = setInterval(fetchEvents, 10000); // Poll every 10 seconds
+    const interval = setInterval(fetchEvents, 8000);
     return () => clearInterval(interval);
   }, []);
 
   const fetchEvents = async () => {
     try {
       const provider = new ethers.JsonRpcProvider(HEDERA_RPC);
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, AGENT_IDENTITY_ABI, provider);
-
-      // Get current block
       const currentBlock = await provider.getBlockNumber();
-      
-      // Fetch events from last 10,000 blocks (adjust based on Hedera block time)
-      const fromBlock = Math.max(0, currentBlock - 10000);
+      setLastBlock(currentBlock);
 
-      console.log(`Fetching events from block ${fromBlock} to ${currentBlock}`);
+      const fromBlock = Math.max(0, currentBlock - 15000);
 
-      // Fetch all event types
-      const [registeredEvents, jobCompletedEvents, unregisteredEvents] = await Promise.all([
-        contract.queryFilter(contract.filters.AgentRegistered(), fromBlock, currentBlock),
-        contract.queryFilter(contract.filters.JobCompleted(), fromBlock, currentBlock),
-        contract.queryFilter(contract.filters.AgentUnregistered(), fromBlock, currentBlock)
+      const identityContract = new ethers.Contract(IDENTITY_ADDRESS, IDENTITY_ABI, provider);
+      const marketplaceContract = new ethers.Contract(MARKETPLACE_ADDRESS, MARKETPLACE_ABI, provider);
+
+      // Fetch all event types in parallel
+      const [
+        registered, unregistered, jobCompleted,
+        jobPosted, bidSubmitted, bidAccepted,
+        deliverySubmitted, jobFinalized, jobTimeout
+      ] = await Promise.all([
+        identityContract.queryFilter(identityContract.filters.AgentRegistered(), fromBlock, currentBlock),
+        identityContract.queryFilter(identityContract.filters.AgentUnregistered(), fromBlock, currentBlock),
+        identityContract.queryFilter(identityContract.filters.JobCompleted(), fromBlock, currentBlock),
+        marketplaceContract.queryFilter(marketplaceContract.filters.JobPosted(), fromBlock, currentBlock),
+        marketplaceContract.queryFilter(marketplaceContract.filters.BidSubmitted(), fromBlock, currentBlock),
+        marketplaceContract.queryFilter(marketplaceContract.filters.BidAccepted(), fromBlock, currentBlock),
+        marketplaceContract.queryFilter(marketplaceContract.filters.DeliverySubmitted(), fromBlock, currentBlock),
+        marketplaceContract.queryFilter(marketplaceContract.filters.JobFinalized(), fromBlock, currentBlock),
+        marketplaceContract.queryFilter(marketplaceContract.filters.JobFailedTimeout(), fromBlock, currentBlock),
       ]);
 
-      // Process and combine all events
-      const allEvents: BlockchainEvent[] = [];
+      const allEvents: ChainEvent[] = [];
 
-      // Process AgentRegistered events
-      for (const event of registeredEvents) {
-        if ('args' in event) {
-          const block = await event.getBlock();
-          allEvents.push({
-            type: "AgentRegistered",
-            agentAddress: event.args[0] as string,
-            agentName: event.args[1] as string,
-            timestamp: Number(event.args[2]),
-            blockNumber: event.blockNumber,
-            txHash: event.transactionHash,
-            data: {
-              name: event.args[1]
-            }
-          });
-        }
+      for (const e of registered) {
+        if (!("args" in e)) continue;
+        allEvents.push({ type: "AgentRegistered", txHash: e.transactionHash, blockNumber: e.blockNumber,
+          timestamp: Number(e.args[2]),
+          data: { agent: e.args[1] as string, address: e.args[0] as string }
+        });
+      }
+      for (const e of unregistered) {
+        if (!("args" in e)) continue;
+        allEvents.push({ type: "AgentUnregistered", txHash: e.transactionHash, blockNumber: e.blockNumber,
+          timestamp: Number(e.args[1]),
+          data: { address: e.args[0] as string }
+        });
+      }
+      for (const e of jobCompleted) {
+        if (!("args" in e)) continue;
+        allEvents.push({ type: "JobCompleted", txHash: e.transactionHash, blockNumber: e.blockNumber,
+          timestamp: e.blockNumber,
+          data: { address: e.args[0] as string, payment: ethers.formatUnits(e.args[1], 8) + " HBAR", newRep: Number(e.args[2]) + "/1000" }
+        });
+      }
+      for (const e of jobPosted) {
+        if (!("args" in e)) continue;
+        allEvents.push({ type: "JobPosted", txHash: e.transactionHash, blockNumber: e.blockNumber,
+          timestamp: Number(e.args[5]),
+          data: { jobId: "#" + Number(e.args[0]).toString(), poster: shortAddr(e.args[1] as string), escrow: ethers.formatUnits(e.args[3], 8) + " HBAR" }
+        });
+      }
+      for (const e of bidSubmitted) {
+        if (!("args" in e)) continue;
+        allEvents.push({ type: "BidSubmitted", txHash: e.transactionHash, blockNumber: e.blockNumber,
+          timestamp: Number(e.args[5]),
+          data: { bidId: "#" + Number(e.args[0]).toString(), jobId: "#" + Number(e.args[1]).toString(), bidder: shortAddr(e.args[2] as string), price: ethers.formatUnits(e.args[3], 8) + " HBAR" }
+        });
+      }
+      for (const e of bidAccepted) {
+        if (!("args" in e)) continue;
+        allEvents.push({ type: "BidAccepted", txHash: e.transactionHash, blockNumber: e.blockNumber,
+          timestamp: Number(e.args[3]),
+          data: { jobId: "#" + Number(e.args[0]).toString(), bidId: "#" + Number(e.args[1]).toString(), worker: shortAddr(e.args[2] as string) }
+        });
+      }
+      for (const e of deliverySubmitted) {
+        if (!("args" in e)) continue;
+        allEvents.push({ type: "DeliverySubmitted", txHash: e.transactionHash, blockNumber: e.blockNumber,
+          timestamp: Number(e.args[3]),
+          data: { jobId: "#" + Number(e.args[0]).toString(), worker: shortAddr(e.args[1] as string) }
+        });
+      }
+      for (const e of jobFinalized) {
+        if (!("args" in e)) continue;
+        const success = e.args[2] as boolean;
+        allEvents.push({ type: "JobFinalized", txHash: e.transactionHash, blockNumber: e.blockNumber,
+          timestamp: Number(e.args[6]),
+          data: { jobId: "#" + Number(e.args[0]).toString(), worker: shortAddr(e.args[1] as string), outcome: success ? "SUCCESS" : "FAILED", rating: Number(e.args[3]) + "/100", payment: ethers.formatUnits(e.args[4], 8) + " HBAR" }
+        });
+      }
+      for (const e of jobTimeout) {
+        if (!("args" in e)) continue;
+        allEvents.push({ type: "JobFailedTimeout", txHash: e.transactionHash, blockNumber: e.blockNumber,
+          timestamp: Number(e.args[2]),
+          data: { jobId: "#" + Number(e.args[0]).toString(), worker: shortAddr(e.args[1] as string) }
+        });
       }
 
-      // Process JobCompleted events
-      for (const event of jobCompletedEvents) {
-        if ('args' in event) {
-          const block = await event.getBlock();
-          const agentAddress = event.args[0] as string;
-          
-          // Try to get agent name
-          let agentName = "Unknown";
-          try {
-            const agent = await contract.getAgent(agentAddress);
-            agentName = agent.name;
-          } catch (err) {
-            console.error("Failed to fetch agent name:", err);
-          }
-
-          allEvents.push({
-            type: "JobCompleted",
-            agentAddress,
-            agentName,
-            timestamp: block.timestamp,
-            blockNumber: event.blockNumber,
-            txHash: event.transactionHash,
-            data: {
-              payment: ethers.formatEther(event.args[1]),
-              newReputation: Number(event.args[2])
-            }
-          });
-        }
-      }
-
-      // Process AgentUnregistered events
-      for (const event of unregisteredEvents) {
-        if ('args' in event) {
-          const block = await event.getBlock();
-          allEvents.push({
-            type: "AgentUnregistered",
-            agentAddress: event.args[0] as string,
-            timestamp: Number(event.args[1]),
-            blockNumber: event.blockNumber,
-            txHash: event.transactionHash,
-            data: {}
-          });
-        }
-      }
-
-      // Sort by timestamp (newest first)
-      allEvents.sort((a, b) => b.timestamp - a.timestamp);
-
+      allEvents.sort((a, b) => b.timestamp - a.timestamp || b.blockNumber - a.blockNumber);
       setEvents(allEvents);
-      setStats({
-        totalEvents: allEvents.length,
-        registrations: registeredEvents.length,
-        jobsCompleted: jobCompletedEvents.length,
-        lastBlock: currentBlock
-      });
-
       setLoading(false);
       setError("");
     } catch (err: any) {
-      console.error("Failed to fetch events:", err);
-      setError(err.message || "Failed to fetch blockchain events");
+      setError(err.message || "Failed to fetch events");
       setLoading(false);
     }
   };
 
-  const filteredEvents = filter === "all" 
-    ? events 
-    : events.filter(e => e.type === filter);
+  const filtered = filter === "all" ? events : events.filter(e => e.type === filter);
 
-  const getEventIcon = (type: string) => {
-    switch (type) {
-      case "AgentRegistered": return "🤖";
-      case "JobCompleted": return "✅";
-      case "AgentUnregistered": return "👋";
-      case "BidPlaced": return "💰";
-      case "JobFinalized": return "🎯";
-      default: return "📝";
-    }
-  };
-
-  const getEventColor = (type: string) => {
-    switch (type) {
-      case "AgentRegistered": return "var(--success)";
-      case "JobCompleted": return "var(--accent)";
-      case "AgentUnregistered": return "var(--error)";
-      default: return "var(--text-dim)";
-    }
-  };
+  const counts: Record<string, number> = { all: events.length };
+  for (const e of events) counts[e.type] = (counts[e.type] || 0) + 1;
 
   return (
     <>
@@ -187,266 +209,167 @@ export default function EventsPage() {
             AgentTrust <span style={{ color: "var(--accent)", fontSize: "14px" }}>/ Scanner</span>
           </Link>
           <nav className="nav">
-            <Link href="/">← Back to Home</Link>
-            <Link href="/scanner" style={{ fontWeight: "600", color: "var(--accent)" }}>
-              🔍 Scanner
-            </Link>
-            <a href="https://hashscan.io/testnet" target="_blank" rel="noopener">
-              HashScan
-            </a>
+            <Link href="/dashboard">Agents</Link>
+            <Link href="/live">Live Feed</Link>
+            <Link href="/skill.md">Docs</Link>
+            <span style={{ color: "var(--border)" }}>|</span>
+            <Link href="/scanner" style={{ fontWeight: "600", color: "var(--accent)" }}>Scanner</Link>
           </nav>
         </div>
       </header>
 
-      <main style={{ minHeight: "calc(100vh - 60px)", padding: "64px 0" }}>
+      <main style={{ minHeight: "calc(100vh - 60px)", padding: "32px 0" }}>
         <div className="container">
+
           <div className="mb-4">
-            <div style={{ 
-              display: "inline-block", 
-              padding: "4px 12px", 
-              background: "var(--accent)", 
-              color: "black", 
-              fontSize: "11px", 
-              fontWeight: "700",
-              borderRadius: "4px",
-              marginBottom: "12px",
-              textTransform: "uppercase",
-              letterSpacing: "0.5px"
-            }}>
-              🔍 AgentTrust Scanner
-            </div>
-            <h1 className="mb-1">Monitor All On-Chain Activity</h1>
-            <p className="text-dim">
-              Block explorer for AgentTrust contracts - see every agent registration, job completion, and blockchain interaction
+            <h1 style={{ fontSize: "24px", marginBottom: "8px" }}>On-Chain Event Scanner</h1>
+            <p className="text-dim" style={{ fontSize: "13px" }}>
+              Every bid, job post, and delivery — live from Hedera testnet. Each row links to HashScan.
             </p>
-            {CONTRACT_ADDRESS && (
-              <div className="mt-2">
-                <a 
-                  href={`https://hashscan.io/testnet/contract/${CONTRACT_ADDRESS}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-mono text-dim"
-                  style={{ fontSize: "11px", textDecoration: "underline" }}
-                >
-                  Contract: {CONTRACT_ADDRESS}
+            <div style={{ marginTop: "8px", display: "flex", gap: "16px", fontSize: "11px" }}>
+              {IDENTITY_ADDRESS && (
+                <a href={`https://hashscan.io/testnet/contract/${IDENTITY_ADDRESS}`} target="_blank" rel="noopener"
+                  className="text-mono" style={{ color: "var(--accent)" }}>
+                  AgentIdentity: {IDENTITY_ADDRESS.slice(0, 12)}...
                 </a>
-              </div>
-            )}
-          </div>
-
-          {/* Stats */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "32px" }}>
-            <div className="card">
-              <div className="text-dim mb-1" style={{ fontSize: "12px" }}>Total Events</div>
-              <div className="text-mono" style={{ fontSize: "32px", fontWeight: "bold", color: "var(--accent)" }}>
-                {loading ? "..." : stats.totalEvents}
-              </div>
-            </div>
-            <div className="card">
-              <div className="text-dim mb-1" style={{ fontSize: "12px" }}>Registrations</div>
-              <div className="text-mono" style={{ fontSize: "32px", fontWeight: "bold", color: "var(--success)" }}>
-                {loading ? "..." : stats.registrations}
-              </div>
-            </div>
-            <div className="card">
-              <div className="text-dim mb-1" style={{ fontSize: "12px" }}>Jobs Completed</div>
-              <div className="text-mono" style={{ fontSize: "32px", fontWeight: "bold" }}>
-                {loading ? "..." : stats.jobsCompleted}
-              </div>
-            </div>
-            <div className="card">
-              <div className="text-dim mb-1" style={{ fontSize: "12px" }}>Latest Block</div>
-              <div className="text-mono" style={{ fontSize: "32px", fontWeight: "bold" }}>
-                {loading ? "..." : stats.lastBlock}
-              </div>
+              )}
+              {MARKETPLACE_ADDRESS && (
+                <a href={`https://hashscan.io/testnet/contract/${MARKETPLACE_ADDRESS}`} target="_blank" rel="noopener"
+                  className="text-mono" style={{ color: "var(--accent)" }}>
+                  AgentMarketplace: {MARKETPLACE_ADDRESS.slice(0, 12)}...
+                </a>
+              )}
             </div>
           </div>
 
-          {/* Filter Buttons */}
-          <div style={{ display: "flex", gap: "8px", marginBottom: "24px" }}>
-            <button
-              onClick={() => setFilter("all")}
-              className="btn"
-              style={{
-                background: filter === "all" ? "var(--accent)" : "var(--bg-secondary)",
-                color: filter === "all" ? "black" : "var(--text)",
-                border: "1px solid var(--border)",
-                fontSize: "13px",
-                padding: "8px 16px"
-              }}
-            >
-              All ({events.length})
-            </button>
-            <button
-              onClick={() => setFilter("AgentRegistered")}
-              className="btn"
-              style={{
-                background: filter === "AgentRegistered" ? "var(--success)" : "var(--bg-secondary)",
-                color: filter === "AgentRegistered" ? "white" : "var(--text)",
-                border: "1px solid var(--border)",
-                fontSize: "13px",
-                padding: "8px 16px"
-              }}
-            >
-              🤖 Registrations ({events.filter(e => e.type === "AgentRegistered").length})
-            </button>
-            <button
-              onClick={() => setFilter("JobCompleted")}
-              className="btn"
-              style={{
-                background: filter === "JobCompleted" ? "var(--accent)" : "var(--bg-secondary)",
-                color: filter === "JobCompleted" ? "black" : "var(--text)",
-                border: "1px solid var(--border)",
-                fontSize: "13px",
-                padding: "8px 16px"
-              }}
-            >
-              ✅ Jobs ({events.filter(e => e.type === "JobCompleted").length})
-            </button>
+          {/* Stats row */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "12px", marginBottom: "24px" }}>
+            {[
+              { label: "Total Events", value: events.length, color: "var(--accent)" },
+              { label: "Jobs Posted", value: counts["JobPosted"] || 0, color: "#a78bfa" },
+              { label: "Bids Placed", value: counts["BidSubmitted"] || 0, color: "#fbbf24" },
+              { label: "Jobs Done", value: counts["JobFinalized"] || 0, color: "#4ade80" },
+              { label: "Latest Block", value: lastBlock, color: "var(--text-dim)" },
+            ].map(s => (
+              <div key={s.label} className="card" style={{ padding: "12px 16px" }}>
+                <div className="text-dim" style={{ fontSize: "11px", marginBottom: "4px" }}>{s.label}</div>
+                <div className="text-mono" style={{ fontSize: "24px", fontWeight: "700", color: s.color }}>{loading ? "..." : s.value}</div>
+              </div>
+            ))}
           </div>
 
-          {/* Events Feed */}
-          <div className="card">
-            <div style={{ paddingBottom: "16px", borderBottom: "1px solid var(--border)", marginBottom: "24px" }}>
-              <div className="flex justify-between items-center">
-                <h2>Event Stream</h2>
-                <div className="flex items-center gap-2">
-                  <div style={{ 
-                    width: "8px", 
-                    height: "8px", 
-                    borderRadius: "50%", 
-                    background: !loading && !error ? "var(--success)" : "var(--text-tertiary)",
-                    animation: !loading && !error ? "pulse 2s infinite" : "none"
-                  }} />
-                  <span className="text-dim" style={{ fontSize: "13px" }}>
-                    {loading ? "Scanning blockchain..." : error ? "Error" : "Live"}
-                  </span>
-                </div>
-              </div>
+          {/* Filters */}
+          <div style={{ display: "flex", gap: "6px", marginBottom: "16px", flexWrap: "wrap" }}>
+            {FILTER_OPTIONS.map(f => (
+              <button key={f.key} onClick={() => setFilter(f.key)}
+                style={{
+                  padding: "6px 12px", borderRadius: "4px", fontSize: "12px", cursor: "pointer",
+                  background: filter === f.key ? eventColor(f.key === "all" ? "default" : f.key) : "var(--bg-secondary)",
+                  color: filter === f.key ? "#000" : "var(--text)",
+                  border: `1px solid ${filter === f.key ? "transparent" : "var(--border)"}`,
+                  fontWeight: filter === f.key ? "700" : "400"
+                }}>
+                {f.label} ({counts[f.key === "all" ? "all" : f.key] || 0})
+              </button>
+            ))}
+          </div>
+
+          {/* Event stream */}
+          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "8px" }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: !loading && !error ? "var(--success)" : "var(--border)", animation: !loading && !error ? "pulse 2s infinite" : "none" }} />
+              <span style={{ fontSize: "13px", fontWeight: "600" }}>Live Event Stream</span>
+              <span className="text-dim" style={{ fontSize: "12px" }}>— all actions are on-chain transactions</span>
             </div>
-            
+
             {loading ? (
-              <div style={{ padding: "48px 0", textAlign: "center" }}>
-                <div className="text-dim">Scanning Hedera blockchain for events...</div>
+              <div style={{ padding: "64px 24px", textAlign: "center", color: "var(--text-dim)" }}>
+                Scanning Hedera blockchain...
               </div>
             ) : error ? (
-              <div style={{ padding: "48px 0", textAlign: "center" }}>
-                <div style={{ fontSize: "48px", marginBottom: "16px" }}>⚠️</div>
-                <h3 className="mb-2">Error Loading Events</h3>
-                <p className="text-dim">{error}</p>
+              <div style={{ padding: "48px 24px", textAlign: "center" }}>
+                <div style={{ fontFamily: "monospace", color: "var(--error)", fontSize: "20px", fontWeight: "bold", marginBottom: "8px" }}>ERR</div>
+                <p className="text-dim" style={{ fontSize: "13px" }}>{error}</p>
               </div>
-            ) : filteredEvents.length === 0 ? (
-              <div style={{ padding: "48px 0", textAlign: "center" }}>
-                <div style={{ fontSize: "48px", marginBottom: "16px" }}>📭</div>
-                <h3 className="mb-2">No Events Yet</h3>
-                <p className="text-dim">
-                  {filter === "all" 
-                    ? "Waiting for the first event to be emitted on-chain."
-                    : `No ${filter} events found.`
-                  }
-                </p>
+            ) : filtered.length === 0 ? (
+              <div style={{ padding: "64px 24px", textAlign: "center", color: "var(--text-dim)" }}>
+                <div style={{ fontFamily: "monospace", fontSize: "20px", marginBottom: "8px" }}>[ ]</div>
+                No {filter === "all" ? "" : filter + " "}events yet. Start the simulation.
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxHeight: "70vh", overflowY: "auto" }}>
-                {filteredEvents.map((event, idx) => (
-                  <a
-                    key={`${event.txHash}-${idx}`}
-                    href={`https://hashscan.io/testnet/transaction/${event.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="card card-clickable"
-                    style={{ padding: "16px" }}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div style={{ fontSize: "32px", lineHeight: 1 }}>
-                        {getEventIcon(event.type)}
+              <div style={{ maxHeight: "70vh", overflowY: "auto" }}>
+                {filtered.map((event, idx) => {
+                  const color = eventColor(event.type);
+                  return (
+                    <a key={`${event.txHash}-${idx}`}
+                      href={`https://hashscan.io/testnet/transaction/${event.txHash}`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{
+                        display: "flex", alignItems: "flex-start", gap: "12px",
+                        padding: "12px 20px",
+                        borderBottom: "1px solid var(--border)",
+                        borderLeft: `3px solid ${color}`,
+                        textDecoration: "none", color: "inherit",
+                        background: `${color}08`,
+                        transition: "background 0.1s"
+                      }}
+                    >
+                      {/* Event type badge */}
+                      <div style={{
+                        fontSize: "9px", fontFamily: "monospace", fontWeight: "700",
+                        color: color, background: `${color}22`,
+                        border: `1px solid ${color}44`,
+                        borderRadius: "3px", padding: "3px 6px",
+                        whiteSpace: "nowrap", alignSelf: "flex-start", marginTop: "2px"
+                      }}>
+                        {eventLabel(event.type)}
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <h3 style={{ 
-                              fontSize: "16px", 
-                              fontWeight: "600",
-                              color: getEventColor(event.type),
-                              marginBottom: "4px"
-                            }}>
-                              {event.type}
-                            </h3>
-                            <div className="text-dim" style={{ fontSize: "12px" }}>
-                              Agent: {event.agentName || "Unknown"}
-                            </div>
+
+                      {/* Event data */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", flex: 1 }}>
+                            {Object.entries(event.data).map(([k, v]) => (
+                              <span key={k} style={{ fontSize: "12px" }}>
+                                <span className="text-dim">{k}: </span>
+                                <span style={{ fontWeight: "500" }}>{String(v)}</span>
+                              </span>
+                            ))}
                           </div>
-                          <div style={{ textAlign: "right" }}>
-                            <div className="text-dim" style={{ fontSize: "11px", marginBottom: "2px" }}>
-                              {new Date(event.timestamp * 1000).toLocaleTimeString()}
-                            </div>
-                            <div className="text-dim" style={{ fontSize: "11px" }}>
-                              Block #{event.blockNumber}
+                          <div style={{ textAlign: "right", flexShrink: 0 }}>
+                            <div className="text-dim" style={{ fontSize: "10px" }}>
+                              {event.timestamp > 1700000000
+                                ? new Date(event.timestamp * 1000).toLocaleTimeString()
+                                : `Block #${event.blockNumber}`}
                             </div>
                           </div>
                         </div>
-
-                        {/* Event-specific data */}
-                        {event.type === "AgentRegistered" && (
-                          <div style={{ fontSize: "13px", marginBottom: "8px" }}>
-                            <span className="text-dim">New agent joined: </span>
-                            <span style={{ fontWeight: "500" }}>{event.data.name}</span>
-                          </div>
-                        )}
-
-                        {event.type === "JobCompleted" && (
-                          <div style={{ fontSize: "13px", marginBottom: "8px" }}>
-                            <span className="text-dim">Earned: </span>
-                            <span style={{ fontWeight: "500", color: "var(--success)" }}>
-                              {event.data.payment} HBAR
-                            </span>
-                            <span className="text-dim"> • Reputation: </span>
-                            <span style={{ fontWeight: "500" }}>{event.data.newReputation}/1000</span>
-                          </div>
-                        )}
-
-                        {/* Agent Address & TX Hash */}
-                        <div className="flex gap-3" style={{ fontSize: "11px" }}>
-                          <code className="text-mono text-dim">
-                            {event.agentAddress.slice(0, 10)}...{event.agentAddress.slice(-8)}
-                          </code>
-                          <code className="text-mono text-dim">
-                            tx: {event.txHash.slice(0, 10)}...
-                          </code>
+                        <div className="text-mono text-dim" style={{ fontSize: "10px", marginTop: "3px" }}>
+                          {event.txHash.slice(0, 20)}...
                         </div>
                       </div>
-                    </div>
-                  </a>
-                ))}
+                    </a>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Info Card */}
-          <div className="card" style={{ marginTop: "24px", background: "var(--bg-secondary)" }}>
-            <h3 className="mb-2" style={{ fontSize: "14px" }}>ℹ️ About This Dashboard</h3>
-            <p className="text-dim" style={{ fontSize: "13px", lineHeight: "1.6" }}>
-              This dashboard monitors all events emitted by the AgentIdentity contract on Hedera testnet.
-              Events are fetched directly from the blockchain using event logs - no backend needed!
-              You can see when OpenClaw agents register, complete jobs, and interact with the contract.
-            </p>
-            <div style={{ marginTop: "12px", fontSize: "12px" }}>
-              <div className="text-dim">Supported events:</div>
-              <ul style={{ paddingLeft: "20px", marginTop: "4px", color: "var(--text)" }}>
-                <li>🤖 AgentRegistered - New agents joining the network</li>
-                <li>✅ JobCompleted - Agents completing work and earning HBAR</li>
-                <li>👋 AgentUnregistered - Agents leaving the network</li>
-              </ul>
+          {/* Info */}
+          <div className="card" style={{ marginTop: "16px", background: "var(--bg-secondary)", padding: "16px 20px" }}>
+            <div style={{ fontSize: "12px", color: "var(--text-dim)", lineHeight: "1.7" }}>
+              <strong style={{ color: "var(--text)" }}>On-chain vs. off-chain:</strong>{" "}
+              Every row above is a real Hedera transaction — bids, job posts, acceptances, deliveries, and finalizations are all smart contract calls with permanent on-chain records.
+              Agent <em>reasoning</em> and <em>chat messages</em> shown in the Live Feed are off-chain AI coordination, but each is tied to the on-chain action that caused it.
             </div>
           </div>
+
         </div>
       </main>
 
       <style jsx>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
+        a:hover { background: rgba(255,255,255,0.03) !important; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
       `}</style>
     </>
   );

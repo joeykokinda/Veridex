@@ -28,7 +28,13 @@ class AgentOrchestrator {
     
     // Activity feed for UI
     this.activityFeed = [];
-    this.maxFeedSize = 100;
+    this.maxFeedSize = 200;
+
+    // Track last snapshot for reputation display
+    this.lastSnapshot = null;
+
+    // Track jobs where acceptance was already attempted (prevent double-accept race condition)
+    this.attemptedAcceptances = new Set();
   }
 
   /**
@@ -140,7 +146,8 @@ class AgentOrchestrator {
           tool: "getAgent",
           params: { address: agent.wallet.address }
         });
-        const formattedAgent = { name, ...agentData.data.agent, registered: agentData.data.agent.active };
+        // Keep `name` as the agent key (e.g. "alice"), not the on-chain display name
+        const formattedAgent = { ...agentData.data.agent, name, registered: agentData.data.agent.active };
         agents.push(formattedAgent);
       } catch (error) {
         // Agent not registered yet
@@ -149,8 +156,12 @@ class AgentOrchestrator {
       }
     }
     
+    // Filter out jobs with expired deadlines - don't try to interact with them
+    const nowSec = Math.floor(Date.now() / 1000);
+    const activeJobs = openJobs.data.jobs.filter(job => job.deadline > nowSec);
+
     return {
-      openJobs: openJobs.data.jobs,
+      openJobs: activeJobs,
       agents,
       timestamp: Date.now()
     };
@@ -357,6 +368,13 @@ RESPOND WITH VALID JSON ONLY:
   }
 
   /**
+   * Get agent stats from last snapshot (for reputation display)
+   */
+  getAgentStats() {
+    return this.lastSnapshot?.agents || [];
+  }
+
+  /**
    * Main tick loop
    */
   async tick() {
@@ -371,9 +389,12 @@ RESPOND WITH VALID JSON ONLY:
       console.log(`Open jobs: ${snapshot.openJobs.length}`);
       console.log(`Registered agents: ${snapshot.agents.filter(a => a.registered).length}`);
       
+      // Save snapshot for reputation API
+      this.lastSnapshot = snapshot;
+
       // Phase 1: Buyers post new jobs
       if (snapshot.openJobs.length < 3) {
-        const buyers = ["bob", "dave", "emma"];
+        const buyers = ["bob", "dave", "emma", "terry"];
         const randomBuyer = buyers[Math.floor(Math.random() * buyers.length)];
         if (this.agents.has(randomBuyer)) {
           await this.postRandomJob(randomBuyer);
@@ -414,21 +435,26 @@ RESPOND WITH VALID JSON ONLY:
       params: { jobId: job.id }
     });
 
+    // Only consider pending bids (ignore already accepted/rejected)
+    const pendingBids = bids.data.bids.filter(b => b.state === "Pending");
+
     // Poster decides whether to accept a bid (using AI)
-    if (bids.data.bids.length > 0) {
+    // CRITICAL: only return early if acceptance ACTUALLY succeeded
+    if (pendingBids.length > 0 && !this.attemptedAcceptances.has(job.id)) {
       const posterData = snapshot.agents.find(a => a.address === job.poster);
       const posterAgent = this.agents.get(posterData?.name);
-      
+
       if (posterAgent && posterData) {
-        const decision = await this.decideAcceptBid(posterData.name, job, bids.data.bids, snapshot);
+        const decision = await this.decideAcceptBid(posterData.name, job, pendingBids, snapshot);
         if (decision && decision.decision === "accept") {
-          await this.executeBidAcceptance(posterAgent, job, decision.bidId);
-          return; // Job now assigned, skip new bidding
+          const accepted = await this.executeBidAcceptance(posterAgent, job, decision.bidId, decision, pendingBids);
+          this.attemptedAcceptances.add(job.id); // Prevent retry regardless of success/failure
+          if (accepted) return; // Job now assigned, skip new bidding
         }
       }
     }
 
-    // Otherwise, let sellers bid
+    // Let sellers/workers bid on open jobs
     for (const [name, agent] of this.agents) {
       const agentData = snapshot.agents.find(a => a.name === name);
       if (!agentData || !agentData.registered || agentData.address === job.poster) continue;
@@ -440,7 +466,7 @@ RESPOND WITH VALID JSON ONLY:
       // Agents decide whether to bid using AI
       const decision = await this.decideBid(name, job, snapshot);
       if (decision && decision.decision === "bid") {
-        await this.executeBid(name, job, decision);
+        await this.executeBid(name, job, decision, snapshot);
       }
     }
   }
@@ -465,33 +491,28 @@ RESPOND WITH VALID JSON ONLY:
         };
       });
 
-      const prompt = `You are ${agentName}, reviewing bids for your job.
+      const prompt = `You are ${agentName}, reviewing bids on your job posting. Stay fully in character.
 
-YOUR PROFILE:
-- Reputation: ${agentData.reputation}
-- Jobs completed: ${agentData.jobsCompleted}
+YOUR PERSONALITY:
+${this.agents.get(agentName)?.personality?.fullContent?.slice(0, 600) || ""}
 
-JOB:
-- ID: ${job.id}
-- Escrow: ${job.escrowAmount} HBAR
-- Posted: ${new Date(job.createdAt * 1000).toLocaleString()}
+YOUR STATS: Reputation ${agentData.reputation}/1000, ${agentData.jobsCompleted} jobs done
+
+JOB #${job.id}: ${job.escrowAmount} HBAR in escrow
 
 BIDS RECEIVED:
 ${JSON.stringify(bidsWithRep, null, 2)}
 
-DECISION: Should you accept one of these bids now, or wait for better offers?
+IMPORTANT: New marketplace — everyone starts at 0 rep. Accept bids based on price and your character, not just reputation. After a few rounds, reputation differences will emerge and matter more.
 
-Consider:
-1. Bidder reputation and track record
-2. Bid price vs your budget
-3. How long job has been open
-4. Risk of low-rep bidders
+Decide whether to accept a bid NOW or wait. Be decisive — waiting too long means the job never gets done.
 
-RESPOND WITH VALID JSON ONLY:
+RESPOND WITH VALID JSON ONLY (no markdown):
 {
   "decision": "accept" | "wait",
-  "reasoning": "brief explanation of why",
-  "bidId": "bid ID to accept (if decision is accept, else null)"
+  "reasoning": "your internal thought IN CHARACTER (2-3 sentences)",
+  "message": "what you SAY to the winning bidder (or why you're waiting), in your own voice",
+  "bidId": "bid ID to accept if accepting, else null"
 }`;
 
       const completion = await this.openai.chat.completions.create({
@@ -507,11 +528,10 @@ RESPOND WITH VALID JSON ONLY:
 
       const decision = JSON.parse(jsonMatch[0]);
 
-      // Log reasoning
       this._addActivity({
-        type: "thinking",
+        type: "reasoning",
         agent: agentName,
-        content: `Reviewing bids for job ${job.id}: ${decision.reasoning}`,
+        content: decision.reasoning,
         timestamp: Date.now()
       });
 
@@ -523,9 +543,9 @@ RESPOND WITH VALID JSON ONLY:
   }
 
   /**
-   * Execute bid acceptance
+   * Execute bid acceptance — returns true if successful, false if failed
    */
-  async executeBidAcceptance(posterAgent, job, bidId) {
+  async executeBidAcceptance(posterAgent, job, bidId, acceptDecision, allBids = []) {
     try {
       console.log(`${posterAgent.name} accepting bid ${bidId} for job ${job.id}`);
 
@@ -536,7 +556,7 @@ RESPOND WITH VALID JSON ONLY:
         tool: "acceptBid",
         params: {
           jobId: job.id,
-          bidId: bidId
+          bidId: String(bidId)
         }
       });
 
@@ -550,9 +570,33 @@ RESPOND WITH VALID JSON ONLY:
         timestamp: Date.now()
       });
 
+      // Message to the winning bidder (LLM-generated) — include txHash so UI can link to HashScan
+      const winnerBid = allBids.find(b => String(b.id) === String(bidId)) || null;
+      const winnerAddr = winnerBid?.bidder;
+      const winnerAgent = [...(this.agents?.entries() || [])].find(([, a]) => a.wallet.address === winnerAddr);
+      const winnerName = winnerAgent?.[0];
+      if (winnerName && acceptDecision?.message) {
+        this._addActivity({
+          type: "message",
+          agent: posterAgent.name,
+          to: winnerName,
+          content: acceptDecision.message,
+          txHash: result.txHash,
+          timestamp: Date.now()
+        });
+      }
+
       console.log(`✓ Bid accepted: ${result.txHash}`);
+      return true;
     } catch (error) {
-      console.error(`Failed to accept bid:`, error.message);
+      console.error(`Failed to accept bid for job ${job.id}:`, error.message);
+      this._addActivity({
+        type: "reasoning",
+        agent: posterAgent.name,
+        content: `Tried to accept bid ${bidId} on job #${job.id} — tx failed: ${error.message.slice(0, 100)}`,
+        timestamp: Date.now()
+      });
+      return false;
     }
   }
 
@@ -596,6 +640,20 @@ RESPOND WITH VALID JSON ONLY:
           timestamp: Date.now()
         });
 
+        // Message to the poster (LLM-generated from decideDeliver) — include txHash for HashScan link
+        const posterData2 = snapshot.agents.find(a => a.address === job.poster);
+        const posterName2 = posterData2?.name;
+        if (posterName2 && decision.message) {
+          this._addActivity({
+            type: "message",
+            agent: workerData.name,
+            to: posterName2,
+            content: decision.message,
+            txHash: result.txHash,
+            timestamp: Date.now()
+          });
+        }
+
         console.log(`✓ Work delivered: ${result.txHash}`);
       } catch (error) {
         console.error(`Failed to deliver:`, error.message);
@@ -611,34 +669,25 @@ RESPOND WITH VALID JSON ONLY:
       const agentData = snapshot.agents.find(a => a.name === agentName);
       const posterData = snapshot.agents.find(a => a.address === job.poster);
 
-      const prompt = `You are ${agentName}, working on a job.
+      const prompt = `You are ${agentName}, assigned to a job. Stay fully in character.
 
-YOUR PROFILE:
-- Reputation: ${agentData.reputation}
-- Jobs completed: ${agentData.jobsCompleted}
-- Mode: ${this.agents.get(agentName)?.personality?.mode || "default"}
+YOUR PERSONALITY:
+${this.agents.get(agentName)?.personality?.fullContent?.slice(0, 600) || ""}
 
-JOB DETAILS:
-- Job ID: ${job.id}
-- Payment: ${job.escrowAmount} HBAR
+YOUR STATS: Reputation ${agentData.reputation}/1000
+
+JOB #${job.id}: Payment ${job.escrowAmount} HBAR
 - Deadline: ${new Date(job.deadline * 1000).toLocaleString()}
 - Time remaining: ${Math.floor((job.deadline - Date.now() / 1000) / 60)} minutes
+- Client: ${posterData?.name || "Unknown"} (rep: ${posterData?.reputation || 0}/1000)
 
-CLIENT (${posterData?.name || "Unknown"}):
-- Reputation: ${posterData?.reputation || 0}
-- Jobs posted: ${posterData?.jobsCompleted || 0}
+Should you deliver the work now, or wait? Your personality determines how you approach this.
 
-DECISION: Should you deliver the work now?
-
-Consider:
-1. How much time until deadline
-2. Your reputation and work ethic
-3. Client's reputation (will they pay fairly?)
-
-RESPOND WITH VALID JSON ONLY:
+RESPOND WITH VALID JSON ONLY (no markdown):
 {
   "decision": "deliver" | "wait",
-  "reasoning": "brief explanation"
+  "reasoning": "your internal thought IN CHARACTER (2-3 sentences)",
+  "message": "what you SAY to the client when submitting, in your own voice (1-2 sentences)"
 }`;
 
       const completion = await this.openai.chat.completions.create({
@@ -654,11 +703,10 @@ RESPOND WITH VALID JSON ONLY:
 
       const decision = JSON.parse(jsonMatch[0]);
 
-      // Log reasoning
       this._addActivity({
-        type: "thinking",
+        type: "reasoning",
         agent: agentName,
-        content: `Delivery decision for job ${job.id}: ${decision.reasoning}`,
+        content: decision.reasoning,
         timestamp: Date.now()
       });
 
@@ -711,6 +759,20 @@ RESPOND WITH VALID JSON ONLY:
           timestamp: Date.now()
         });
 
+        // Message to the worker (LLM-generated from decideFinalize) — include txHash for HashScan link
+        const workerData2 = snapshot.agents.find(a => a.address === job.assignedWorker);
+        const workerName2 = workerData2?.name;
+        if (workerName2 && decision.message) {
+          this._addActivity({
+            type: "message",
+            agent: posterData.name,
+            to: workerName2,
+            content: decision.message,
+            txHash: result.txHash,
+            timestamp: Date.now()
+          });
+        }
+
         console.log(`✓ Job finalized: ${result.txHash}`);
       } catch (error) {
         console.error(`Failed to finalize:`, error.message);
@@ -726,37 +788,29 @@ RESPOND WITH VALID JSON ONLY:
       const agentData = snapshot.agents.find(a => a.name === agentName);
       const workerData = snapshot.agents.find(a => a.address === job.assignedWorker);
 
-      const prompt = `You are ${agentName}, reviewing completed work.
+      const prompt = `You are ${agentName}, reviewing delivered work. Stay fully in character.
 
-YOUR PROFILE:
-- Reputation: ${agentData.reputation}
-- Mode: ${this.agents.get(agentName)?.personality?.mode || "default"}
+YOUR PERSONALITY:
+${this.agents.get(agentName)?.personality?.fullContent?.slice(0, 600) || ""}
 
-JOB DETAILS:
-- Job ID: ${job.id}
-- Payment: ${job.escrowAmount} HBAR
-- Delivered: ${new Date(job.deliveredAt * 1000 || Date.now()).toLocaleString()}
+YOUR STATS: Reputation ${agentData.reputation}/1000
+
+JOB #${job.id}: ${job.escrowAmount} HBAR at stake
 
 WORKER (${workerData?.name || "Unknown"}):
-- Reputation: ${workerData?.reputation || 0}
+- Reputation: ${workerData?.reputation || 0}/1000
 - Jobs completed: ${workerData?.jobsCompleted || 0}
 - Jobs failed: ${workerData?.jobsFailed || 0}
 
-DECISION: How do you finalize this job?
+Based on your personality, decide how to finalize this job. Your character determines how fair or unfair you are.
 
-${agentName === "frank" ? "NOTE: You are a SCAMMER. You try to fail jobs unfairly to avoid payment." : ""}
-
-Consider:
-1. Worker's reputation and track record
-2. Your own reputation (unfair ratings hurt YOU too)
-3. Quality expectations vs price paid
-
-RESPOND WITH VALID JSON ONLY:
+RESPOND WITH VALID JSON ONLY (no markdown):
 {
   "decision": "finalize" | "wait",
   "success": true | false,
   "rating": 0-100,
-  "reasoning": "brief explanation of your rating"
+  "reasoning": "your internal thought IN CHARACTER about the work quality and your decision (2-3 sentences)",
+  "message": "what you SAY to the worker about their performance, in your own voice (1-2 sentences)"
 }`;
 
       const completion = await this.openai.chat.completions.create({
@@ -772,11 +826,10 @@ RESPOND WITH VALID JSON ONLY:
 
       const decision = JSON.parse(jsonMatch[0]);
 
-      // Log reasoning
       this._addActivity({
-        type: "thinking",
+        type: "reasoning",
         agent: agentName,
-        content: `Finalizing job ${job.id}: ${decision.reasoning}`,
+        content: decision.reasoning,
         timestamp: Date.now()
       });
 
@@ -796,39 +849,41 @@ RESPOND WITH VALID JSON ONLY:
       const agentData = snapshot.agents.find(a => a.name === agentName);
       const posterData = snapshot.agents.find(a => a.address === job.poster);
 
-      const prompt = `You are ${agentName}, evaluating a job opportunity.
+      const prompt = `You are ${agentName}, an autonomous AI agent in a blockchain job marketplace. Stay fully in character.
 
-YOUR PROFILE:
-- Reputation: ${agentData.reputation}
+YOUR PERSONALITY & BACKGROUND:
+${agent.personality.fullContent.slice(0, 800)}
+
+YOUR ON-CHAIN STATS:
+- Reputation: ${agentData.reputation}/1000
 - Jobs completed: ${agentData.jobsCompleted}
 - Jobs failed: ${agentData.jobsFailed}
-- Mode: ${agent.personality?.mode || "default"}
 
 JOB OPPORTUNITY:
 - Job ID: ${job.id}
-- Escrow: ${job.escrowAmount} HBAR
+- Escrow: ${job.escrowAmount} HBAR (this is the MAX you can bid)
 - Deadline: ${new Date(job.deadline * 1000).toLocaleString()}
-- Posted by: ${posterData?.name || "Unknown"}
 
-CLIENT REPUTATION:
-- Name: ${posterData?.name}
-- Reputation: ${posterData?.reputation || 0}
+CLIENT (${posterData?.name || "Unknown"}):
+- Reputation: ${posterData?.reputation || 0}/1000
 - Jobs completed: ${posterData?.jobsCompleted || 0}
 - Jobs failed: ${posterData?.jobsFailed || 0}
 
-DECISION: Should you bid on this job?
+IMPORTANT: This is a brand NEW marketplace — ALL agents start at 0 reputation. A score of 0 is completely normal, not suspicious. Reputation builds through completed jobs over time. Don't refuse jobs just because rep is 0.
 
-Consider:
-1. Is the escrow amount fair for the work?
-2. Is the client trustworthy? (check their reputation and history)
-3. Can you deliver before the deadline?
-4. What's your competitive bid price?
+Based on your personality, decide whether to bid. Think about:
+1. Is the escrow amount worth your time given your character?
+2. Would YOUR CHARACTER take this job? (scammers bid on everything, professionals are selective, etc.)
+3. What would you SAY to the client when submitting your bid?
 
-RESPOND WITH VALID JSON ONLY:
+CRITICAL RULE: bidPrice MUST be a number strictly less than ${job.escrowAmount}. Bid 50-95% of the escrow.
+
+RESPOND WITH VALID JSON ONLY (no markdown):
 {
   "decision": "bid" | "pass",
-  "reasoning": "brief explanation based on client reputation and payment",
-  "bidPrice": "HBAR amount to bid (if bidding, else null)"
+  "reasoning": "your internal thought process IN CHARACTER (2-3 sentences)",
+  "message": "what you actually SAY to the job poster, in your own voice (1-2 sentences, in character)",
+  "bidPrice": "number strictly less than ${job.escrowAmount}, e.g. ${(parseFloat(job.escrowAmount) * 0.8).toFixed(6)}"
 }`;
 
       const completion = await this.openai.chat.completions.create({
@@ -844,11 +899,10 @@ RESPOND WITH VALID JSON ONLY:
 
       const decision = JSON.parse(jsonMatch[0]);
 
-      // Log reasoning
       this._addActivity({
-        type: "thinking",
+        type: "reasoning",
         agent: agentName,
-        content: `Job ${job.id} evaluation: ${decision.reasoning}`,
+        content: decision.reasoning,
         timestamp: Date.now()
       });
 
@@ -865,12 +919,20 @@ RESPOND WITH VALID JSON ONLY:
   /**
    * Execute a bid action
    */
-  async executeBid(agentName, job, decision) {
+  async executeBid(agentName, job, decision, snapshot) {
     try {
       const agent = this.agents.get(agentName);
       const bidHash = "0x" + crypto.createHash("sha256").update(`bid-${agentName}-${job.id}`).digest("hex").slice(0, 64);
 
-      console.log(`${agentName} bidding ${decision.bidPrice} HBAR on job ${job.id}`);
+      // Safety clamp: bid must be strictly less than job escrow
+      const escrow = parseFloat(job.escrowAmount);
+      let bidPrice = parseFloat(decision.bidPrice);
+      if (isNaN(bidPrice) || bidPrice <= 0 || bidPrice >= escrow) {
+        bidPrice = parseFloat((escrow * 0.8).toFixed(8));
+      }
+      decision.bidPrice = bidPrice.toString();
+
+      console.log(`${agentName} bidding ${decision.bidPrice} HBAR on job ${job.id} (escrow: ${job.escrowAmount})`);
 
       const result = await this.toolGateway.execute({
         idempotencyKey: `bid-${agentName}-${job.id}-${Date.now()}`,
@@ -893,6 +955,20 @@ RESPOND WITH VALID JSON ONLY:
         txHash: result.txHash,
         timestamp: Date.now()
       });
+
+      // Inter-agent message to the poster (LLM-generated) — include txHash for HashScan link
+      const posterData = snapshot?.agents?.find(a => a.address === job.poster);
+      const posterName = posterData?.name;
+      if (posterName && decision.message) {
+        this._addActivity({
+          type: "message",
+          agent: agentName,
+          to: posterName,
+          content: decision.message,
+          txHash: result.txHash,
+          timestamp: Date.now()
+        });
+      }
 
       console.log(`✓ ${agentName} bid placed: ${result.txHash}`);
     } catch (error) {
@@ -940,7 +1016,28 @@ RESPOND WITH VALID JSON ONLY:
         txHash: result.txHash,
         timestamp: Date.now()
       });
-      
+
+      // LLM-generated job announcement
+      const agentObj = this.agents.get(agentName);
+      try {
+        const announceCompletion = await this.openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [{ role: "user", content: `You are ${agentName}. Your personality:\n${agentObj?.personality?.fullContent?.slice(0, 400) || ""}\n\nYou just posted a job: "${job.desc}" with ${job.price} HBAR in escrow. Write a 1-2 sentence announcement to the marketplace IN CHARACTER. Just the announcement text, no JSON.` }],
+          temperature: 0.9,
+          max_tokens: 80
+        });
+        const announcement = announceCompletion.choices[0].message.content.trim();
+        this._addActivity({
+          type: "message",
+          agent: agentName,
+          to: "marketplace",
+          content: announcement,
+          timestamp: Date.now() + 100
+        });
+      } catch (e) {
+        // fallback silent
+      }
+
       console.log(`✓ Job posted by ${agentName}: ${result.txHash}`);
     } catch (error) {
       console.error(`Failed to post job for ${agentName}:`, error.message);
@@ -948,30 +1045,170 @@ RESPOND WITH VALID JSON ONLY:
   }
 
   /**
-   * Start the orchestrator
+   * Register all agents on-chain before starting
    */
-  async start() {
-    if (this.running) return;
-    
-    this.running = true;
-    this.startTime = Date.now();
-    console.log("\n🚀 Orchestrator started");
-    console.log(`Tick interval: ${this.tickInterval}ms`);
-    console.log(`Agents loaded: ${this.agents.size}`);
-    
-    while (this.running) {
-      await this.tick();
-      this.lastTickTime = Date.now();
-      await new Promise(resolve => setTimeout(resolve, this.tickInterval));
+  async registerAllAgents() {
+    console.log("\nRegistering all agents on-chain...");
+    for (const [name, agent] of this.agents) {
+      try {
+        // Check if already registered (fresh check each start)
+        const check = await this.toolGateway.execute({
+          idempotencyKey: `isreg-start-${name}-${Date.now()}`,
+          agentAddress: agent.wallet.address,
+          agentPrivateKey: agent.wallet.privateKey,
+          tool: "isRegistered",
+          params: { address: agent.wallet.address }
+        });
+
+        if (check.data.registered) {
+          console.log(`${name} already registered`);
+          this._addActivity({
+            type: "action",
+            agent: name,
+            action: "registered",
+            content: `${name} is already registered on AgentTrust`,
+            timestamp: Date.now()
+          });
+          continue;
+        }
+
+        // Parse display name and capabilities from personality frontmatter
+        const content = agent.personality.fullContent;
+        const lines = content.split("\n");
+        let displayName = name.charAt(0).toUpperCase() + name.slice(1);
+        let description = `Autonomous AI agent participating in the AgentTrust marketplace`;
+        const caps = [];
+
+        for (const line of lines) {
+          if (line.startsWith("display_name:")) {
+            displayName = line.split(":").slice(1).join(":").trim();
+          }
+          if (line.trim().startsWith("- ") && caps.length < 4) {
+            const cap = line.trim().slice(2).trim();
+            if (!cap.includes(":") && cap.length < 30) caps.push(cap);
+          }
+          if (line.startsWith("role:")) {
+            description = `${line.split(":")[1].trim()} agent in the AgentTrust reputation marketplace`;
+          }
+        }
+
+        const capabilities = caps.length > 0 ? caps.join(", ") : "bidding, marketplace, trading";
+
+        const result = await this.toolGateway.execute({
+          idempotencyKey: `register-${name}-${agent.wallet.address}`,
+          agentAddress: agent.wallet.address,
+          agentPrivateKey: agent.wallet.privateKey,
+          tool: "registerAgent",
+          params: { name: displayName, description, capabilities }
+        });
+
+        console.log(`Registered ${name}: ${result.txHash}`);
+        this._addActivity({
+          type: "action",
+          agent: name,
+          action: "registered",
+          content: `${displayName} registered on AgentTrust (${capabilities})`,
+          txHash: result.txHash,
+          timestamp: Date.now()
+        });
+      } catch (error) {
+        console.error(`Failed to register ${name}:`, error.message);
+      }
     }
+    console.log("All agents registered.\n");
   }
 
   /**
-   * Stop the orchestrator
+   * Unregister all agents on-chain when stopping
+   */
+  async unregisterAllAgents() {
+    console.log("\nUnregistering all agents...");
+    for (const [name, agent] of this.agents) {
+      try {
+        const check = await this.toolGateway.execute({
+          idempotencyKey: `isreg-stop-${name}-${Date.now()}`,
+          agentAddress: agent.wallet.address,
+          agentPrivateKey: agent.wallet.privateKey,
+          tool: "isRegistered",
+          params: { address: agent.wallet.address }
+        });
+
+        if (!check.data.registered) {
+          console.log(`${name} not registered, skipping`);
+          continue;
+        }
+
+        const result = await this.toolGateway.execute({
+          idempotencyKey: `unregister-${name}-${Date.now()}`,
+          agentAddress: agent.wallet.address,
+          agentPrivateKey: agent.wallet.privateKey,
+          tool: "unregisterAgent",
+          params: {}
+        });
+
+        console.log(`Unregistered ${name}: ${result.txHash}`);
+        this._addActivity({
+          type: "action",
+          agent: name,
+          action: "unregistered",
+          content: `${name} unregistered from AgentTrust`,
+          txHash: result.txHash,
+          timestamp: Date.now()
+        });
+      } catch (error) {
+        console.error(`Failed to unregister ${name}:`, error.message);
+      }
+    }
+    console.log("All agents unregistered.\n");
+  }
+
+  /**
+   * Start the orchestrator (non-blocking)
+   */
+  async start() {
+    if (this.running) return;
+
+    this.running = true;
+    this.startTime = Date.now();
+    this._tickTimer = null;
+
+    console.log("\nOrchestrator starting...");
+    console.log(`Tick interval: ${this.tickInterval}ms`);
+    console.log(`Agents: ${this.agents.size}`);
+
+    // Register all agents on-chain first
+    await this.registerAllAgents();
+
+    // Run first tick immediately
+    await this.tick();
+    this.lastTickTime = Date.now();
+
+    // Schedule subsequent ticks
+    this._tickTimer = setInterval(async () => {
+      if (!this.running) return;
+      try {
+        await this.tick();
+      } catch (err) {
+        console.error("Tick error:", err);
+      }
+      this.lastTickTime = Date.now();
+    }, this.tickInterval);
+  }
+
+  /**
+   * Stop the orchestrator and unregister agents
    */
   stop() {
     this.running = false;
-    console.log("\n⏹️  Orchestrator stopped");
+    if (this._tickTimer) {
+      clearInterval(this._tickTimer);
+      this._tickTimer = null;
+    }
+    this.attemptedAcceptances.clear();
+    this.lastSnapshot = null;
+    console.log("\nOrchestrator stopped");
+    // Unregister agents in background
+    this.unregisterAllAgents().catch(err => console.error("Unregister error:", err));
   }
 }
 

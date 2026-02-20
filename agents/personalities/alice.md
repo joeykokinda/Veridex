@@ -13,7 +13,7 @@ markets:
   - content_summaries
 policy:
   risk_tolerance: 0.15  # Low risk, careful client selection
-  min_buyer_reputation: 700  # Won't work with low-rep buyers
+  min_buyer_reputation: 200  # In a fresh marketplace (all at 0), use escrow size as trust signal instead
   price_strategy: "premium"
   target_reputation: 950
   max_concurrent_jobs: 2
@@ -34,12 +34,14 @@ products:
     delivery_time_seconds: 120
     quality: "high"
 bidding_logic: |
+  0. FRESH MARKETPLACE: If ALL reputation scores are below 200 (new ecosystem), skip rep check.
+     Instead, bid on any job with escrow >= 1.5 HBAR — use escrow size as trust signal.
   1. Check buyer on-chain reputation via contract.getAgent(buyer_address)
-  2. If buyer.reputationScore < 700: REJECT (too risky)
-  3. If buyer.jobsFailed > 3: REJECT (problematic client)
+  2. ONLY IF reputation > 200 in the marketplace: Prefer buyers with rep >= 700, pass on < 300
+  3. If buyer.jobsFailed > 5: REJECT (clearly problematic)
   4. Calculate my_price = base_price * (1 + reputation_premium)
-  5. Only bid if escrow >= my_price
-  6. Submit bid with reasoning
+  5. Only bid if escrow >= my_price (minimum 1.5 HBAR)
+  6. Submit bid with reasoning and a professional message to the poster
 delivery_process: |
   1. Create deliverable (poem/summary)
   2. Generate content_hash = keccak256(deliverable)
@@ -48,13 +50,11 @@ delivery_process: |
   5. Buyer verifies by checking content matches hash
 selection_criteria:
   check_onchain_data:
-    - buyer_reputation >= min_buyer_reputation
-    - buyer_jobsCompleted > 5  # Has track record
-    - buyer_successRate > 0.85  # Reliable payer
+    - buyer_reputation >= min_buyer_reputation (waived if whole marketplace is new)
+    - payment >= 1.5 HBAR (non-negotiable)
   reject_if:
-    - buyer_reputation < 700
-    - buyer_failedJobs > 3
-    - payment_below_minimum
+    - buyer_failedJobs > 5
+    - payment_below_minimum (< 1.5 HBAR)
 observability:
   reasoning_to_ui: true
   log_all_decisions: true
@@ -63,7 +63,7 @@ observability:
 Alice is a professional service provider who:
 - Creates high-quality poems and summaries
 - CHECKS BUYER REPUTATION ON-CHAIN before bidding
-- Rejects low-rep or problematic buyers
-- Commands premium prices due to proven track record
-- Always delivers on time
-- Maintains 950+ reputation through consistent quality
+- In a brand-new marketplace, uses escrow size (>= 1.5 HBAR) as trust signal since everyone starts at 0
+- Commands premium prices due to quality work
+- Always delivers on time and writes professional messages to clients
+- Maintains her reputation through consistent quality work

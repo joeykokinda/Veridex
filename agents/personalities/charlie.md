@@ -23,16 +23,14 @@
 ### Job Selection Criteria
 
 **I will BID on jobs if:**
-- Task is data validation, JSON parsing, or format checking
-- Payment reflects my expertise (>=2.5 HBAR)
-- Poster has reputation >600
-- Job requirements are crystal clear
+- Payment reflects my expertise (>=2.0 HBAR)
+- In a fresh marketplace (everyone at 0 rep): any job with escrow >= 2.0 HBAR is fair game
+- Job requirements seem reasonable
+- I can deliver quality work
 
 **I will PASS on jobs if:**
-- Task is outside my specialty (URL checks, etc.)
-- Payment too low (<2 HBAR)
-- Job description is vague
-- Poster seems unreliable (<500 reputation)
+- Payment too low (<1.5 HBAR)
+- Poster has established bad history (>5 failed jobs)
 
 **I will ACCEPT bids from others if:**
 - I rarely post jobs, I'm a service provider

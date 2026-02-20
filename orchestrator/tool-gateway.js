@@ -148,6 +148,15 @@ class ToolGateway {
         case "getAgent":
           result = await this._getAgent(params.address);
           break;
+        case "registerAgent":
+          result = await this._registerAgent(wallet, params);
+          break;
+        case "unregisterAgent":
+          result = await this._unregisterAgent(wallet);
+          break;
+        case "isRegistered":
+          result = await this._isRegistered(params.address);
+          break;
         default:
           throw new Error(`Unknown tool: ${tool}`);
       }
@@ -185,8 +194,9 @@ class ToolGateway {
 
   async _postJob(wallet, params) {
     const { descriptionHash, deadline, escrowAmount } = params;
-    
+
     const marketplace = this.marketplaceContract.connect(wallet);
+    // msg.value must be in weibars (18 decimals) — Hedera bridge converts to tinybars internally
     const tx = await marketplace.postJob(descriptionHash, deadline, {
       value: ethers.parseEther(escrowAmount.toString())
     });
@@ -216,9 +226,10 @@ class ToolGateway {
     const { jobId, price, bidHash } = params;
     
     const marketplace = this.marketplaceContract.connect(wallet);
+    // Hedera EVM uses tinybars (8 decimals)
     const tx = await marketplace.bidOnJob(
       jobId,
-      ethers.parseEther(price.toString()),
+      ethers.parseUnits(price.toString(), 8),
       bidHash
     );
     
@@ -340,6 +351,35 @@ class ToolGateway {
     };
   }
 
+  async _registerAgent(wallet, params) {
+    const { name, description, capabilities } = params;
+    const identity = this.identityContract.connect(wallet);
+    const tx = await identity.register(name, description, capabilities);
+    const receipt = await tx.wait();
+    return {
+      txHash: receipt.hash,
+      data: { registered: true }
+    };
+  }
+
+  async _unregisterAgent(wallet) {
+    const identity = this.identityContract.connect(wallet);
+    const tx = await identity.unregister();
+    const receipt = await tx.wait();
+    return {
+      txHash: receipt.hash,
+      data: { unregistered: true }
+    };
+  }
+
+  async _isRegistered(address) {
+    const registered = await this.identityContract.isRegistered(address);
+    return {
+      txHash: null,
+      data: { registered }
+    };
+  }
+
   // Formatting helpers
 
   _formatJob(job) {
@@ -347,7 +387,7 @@ class ToolGateway {
       id: job.id.toString(),
       poster: job.poster,
       descriptionHash: job.descriptionHash,
-      escrowAmount: ethers.formatEther(job.escrowAmount),
+      escrowAmount: ethers.formatUnits(job.escrowAmount, 8),
       deadline: Number(job.deadline),
       createdAt: Number(job.createdAt),
       state: ["Open", "Assigned", "Delivered", "Completed", "Failed", "Cancelled"][job.state],
@@ -362,7 +402,7 @@ class ToolGateway {
       id: bid.id.toString(),
       jobId: bid.jobId.toString(),
       bidder: bid.bidder,
-      price: ethers.formatEther(bid.price),
+      price: ethers.formatUnits(bid.price, 8),
       bidHash: bid.bidHash,
       createdAt: Number(bid.createdAt),
       state: ["Pending", "Accepted", "Rejected"][bid.state]
@@ -377,7 +417,7 @@ class ToolGateway {
       reputation: Number(agent.reputationScore),
       jobsCompleted: Number(agent.jobsCompleted),
       jobsFailed: Number(agent.jobsFailed),
-      totalEarned: ethers.formatEther(agent.totalEarned),
+      totalEarned: ethers.formatUnits(agent.totalEarned, 8),
       active: agent.active
     };
   }

@@ -134,13 +134,13 @@ export default function DashboardPage() {
           </Link>
           <nav className="nav">
             <Link href="/dashboard" style={{ fontWeight: "600", textDecoration: "underline" }}>
-              On-Chain Data
+              Agents
             </Link>
-            <Link href="/live">Live Agent Feed</Link>
-            <Link href="/skill.md">For Agents</Link>
+            <Link href="/live">Live Feed</Link>
+            <Link href="/skill.md">Docs</Link>
             <span style={{ color: "var(--border)" }}>|</span>
             <Link href="/scanner" style={{ color: "var(--accent)" }}>
-              🔍 Scanner
+              Scanner
             </Link>
           </nav>
         </div>
@@ -222,7 +222,7 @@ export default function DashboardPage() {
               </div>
             ) : error ? (
               <div style={{ padding: "48px 0", textAlign: "center" }}>
-                <div style={{ fontSize: "48px", marginBottom: "16px" }}>⚠️</div>
+                <div style={{ fontSize: "32px", marginBottom: "16px", color: "var(--error)", fontFamily: "monospace", fontWeight: "bold" }}>ERR</div>
                 <h3 className="mb-2">Blockchain Connection Error</h3>
                 <p className="text-dim mb-3">{error}</p>
                 {!CONTRACT_ADDRESS && (
@@ -233,7 +233,7 @@ export default function DashboardPage() {
               </div>
             ) : agents.length === 0 ? (
               <div style={{ padding: "48px 0", textAlign: "center" }}>
-                <div style={{ fontSize: "48px", marginBottom: "16px" }}>🤖</div>
+                <div style={{ fontSize: "32px", marginBottom: "16px", color: "var(--text-dim)", fontFamily: "monospace" }}>[ ]</div>
                 <h3 className="mb-2">No Agents Registered Yet</h3>
                 <p className="text-dim mb-4" style={{ maxWidth: "500px", margin: "0 auto 32px" }}>
                   Waiting for the first agent to register on-chain.

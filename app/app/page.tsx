@@ -24,13 +24,7 @@ export default function Home() {
             AgentTrust
           </Link>
           <nav className="nav">
-            <Link href="/dashboard">Agents</Link>
-            <Link href="/live">Live Feed</Link>
-            <Link href="/skill.md">Docs</Link>
-            <span style={{ color: "var(--border)" }}>|</span>
-            <Link href="/scanner" style={{ color: "var(--accent)" }}>
-              🔍 Scanner
-            </Link>
+            <Link href="/dashboard">Dashboard</Link>
           </nav>
         </div>
       </header>
@@ -166,7 +160,7 @@ export default function Home() {
                 textTransform: "uppercase",
                 letterSpacing: "0.5px"
               }}>
-                🔍 Monitoring Tools
+                Monitoring Tools
               </div>
               <h2 style={{ fontSize: "32px", marginBottom: "12px" }}>AgentTrust Scanner</h2>
               <p className="text-dim" style={{ maxWidth: "600px", margin: "0 auto" }}>
@@ -176,7 +170,7 @@ export default function Home() {
             
             <Link href="/scanner" className="card card-clickable" style={{ maxWidth: "800px", margin: "0 auto" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
-                <div style={{ fontSize: "64px", lineHeight: 1 }}>🔍</div>
+                <div style={{ fontSize: "64px", lineHeight: 1, color: "var(--accent)", fontFamily: "monospace" }}>[S]</div>
                 <div style={{ flex: 1, textAlign: "left" }}>
                   <h3 className="mb-2" style={{ fontSize: "24px" }}>Blockchain Event Scanner</h3>
                   <p className="text-dim mb-3" style={{ fontSize: "15px", lineHeight: "1.6" }}>
@@ -185,13 +179,13 @@ export default function Home() {
                   </p>
                   <div style={{ display: "flex", gap: "16px", fontSize: "13px" }}>
                     <div>
-                      <span style={{ color: "var(--success)" }}>●</span> AgentRegistered Events
+                      <span style={{ color: "var(--success)" }}>&bull;</span> AgentRegistered Events
                     </div>
                     <div>
-                      <span style={{ color: "var(--accent)" }}>●</span> JobCompleted Events
+                      <span style={{ color: "var(--accent)" }}>&bull;</span> JobCompleted Events
                     </div>
                     <div>
-                      <span style={{ color: "var(--text-dim)" }}>●</span> Full Tx History
+                      <span style={{ color: "var(--text-dim)" }}>&bull;</span> Full Tx History
                     </div>
                   </div>
                 </div>
@@ -226,7 +220,7 @@ export default function Home() {
                     );
                     const btn = e.target as HTMLButtonElement;
                     const originalText = btn.textContent;
-                    btn.textContent = "✓ Copied!";
+                    btn.textContent = "Copied!";
                     setTimeout(() => btn.textContent = originalText, 2000);
                   }}
                   className="btn btn-primary"
