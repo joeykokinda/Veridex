@@ -17,14 +17,14 @@ const AgentMarketplace = require("../artifacts/contracts/AgentMarketplace.sol/Ag
 const config = {
   openaiApiKey: process.env.OPENAI_API_KEY,
   observerKey: process.env.DEPLOYER_PRIVATE_KEY,
-  tickInterval: 15000, // 15 seconds
+  tickInterval: 8000, // 8 seconds for faster demo
   toolGateway: {
     rpcUrl: "https://testnet.hashio.io/api",
     identityAddress: process.env.AGENT_IDENTITY_CONTRACT,
     marketplaceAddress: process.env.AGENT_MARKETPLACE_CONTRACT,
     identityABI: AgentIdentity.abi,
     marketplaceABI: AgentMarketplace.abi,
-    maxCallsPerMinute: 20,
+    maxCallsPerMinute: 50, // Increased for demo
     logDir: "./logs"
   }
 };

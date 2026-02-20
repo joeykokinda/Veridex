@@ -382,6 +382,8 @@ RESPOND WITH VALID JSON ONLY:
       
       // Phase 2: Process existing jobs through their lifecycle
       for (const job of snapshot.openJobs) {
+        console.log(`Processing job ${job.id} - State: ${job.state}`);
+        
         if (job.state === "Open") {
           // Sellers bid on open jobs
           await this.handleBidding(job, snapshot);

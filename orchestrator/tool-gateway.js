@@ -54,6 +54,11 @@ class ToolGateway {
   _checkRateLimit(agentAddress) {
     this._checkRateLimitReset();
     
+    // Skip rate limiting for observer address (read-only queries)
+    if (agentAddress === "0x0000000000000000000000000000000000000000") {
+      return;
+    }
+    
     const count = this.agentCallCounts.get(agentAddress) || 0;
     if (count >= this.maxCallsPerMinute) {
       throw new Error(`Rate limit exceeded for ${agentAddress}`);
