@@ -60,27 +60,59 @@ app.get("/api/activity", (req, res) => {
   });
 });
 
-// Get agent list with reputation stats
-app.get("/api/agents", (req, res) => {
+// Get agent list — always queries chain live so rep + balance are never stale
+app.get("/api/agents", async (req, res) => {
+  const provider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
+  const identity = new ethers.Contract(
+    process.env.AGENT_IDENTITY_CONTRACT,
+    AgentIdentity.abi,
+    provider
+  );
+
   const agents = [];
-  const stats = orchestrator.getAgentStats();
   for (const [name, agent] of orchestrator.agents) {
-    const agentStats = stats.find(s => s.name === name) || {};
-    agents.push({
-      name,
-      address: agent.wallet.address,
-      mode: agent.personality.mode,
-      lastAction: agent.lastAction,
-      reputation: agentStats.reputationScore || agentStats.reputation || 500,
-      reputationScore: agentStats.reputationScore || 500,
-      clientScore: agentStats.clientScore || 500,
-      reportCount: agentStats.reportCount || 0,
-      warned: agentStats.warned || false,
-      jobsCompleted: agentStats.jobsCompleted || 0,
-      jobsFailed: agentStats.jobsFailed || 0,
-      totalEarned: agentStats.totalEarned || "0",
-      registered: agentStats.registered || false
-    });
+    try {
+      const [agentData, rawBalance] = await Promise.all([
+        identity.getAgent(agent.wallet.address),
+        provider.getBalance(agent.wallet.address)
+      ]);
+      agents.push({
+        name,
+        address: agent.wallet.address,
+        mode: agent.personality?.mode || "default",
+        lastAction: agent.lastAction || null,
+        reputation: Number(agentData.reputationScore),
+        reputationScore: Number(agentData.reputationScore),
+        clientScore: Number(agentData.clientScore),
+        reportCount: Number(agentData.reportCount),
+        warned: Number(agentData.reportCount) >= 2,
+        jobsCompleted: Number(agentData.jobsCompleted),
+        jobsFailed: Number(agentData.jobsFailed),
+        totalEarned: ethers.formatEther(agentData.totalEarned),
+        registered: agentData.active,
+        balance: parseFloat(ethers.formatEther(rawBalance)).toFixed(2)
+      });
+    } catch (err) {
+      // fallback to snapshot if chain query fails
+      const stats = orchestrator.getAgentStats();
+      const s = stats.find(s => s.name === name) || {};
+      agents.push({
+        name,
+        address: agent.wallet.address,
+        mode: agent.personality?.mode || "default",
+        lastAction: agent.lastAction || null,
+        reputation: s.reputationScore || s.reputation || 500,
+        reputationScore: s.reputationScore || 500,
+        clientScore: s.clientScore || 500,
+        reportCount: s.reportCount || 0,
+        warned: s.warned || false,
+        jobsCompleted: s.jobsCompleted || 0,
+        jobsFailed: s.jobsFailed || 0,
+        totalEarned: s.totalEarned || "0",
+        registered: s.registered || false,
+        balance: "0.00"
+      });
+    }
   }
   res.json({ agents });
 });

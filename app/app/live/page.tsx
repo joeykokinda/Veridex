@@ -35,10 +35,13 @@ interface AgentInfo {
   address: string;
   mode: string;
   reputation: number;
+  clientScore: number;
   jobsCompleted: number;
   jobsFailed: number;
   totalEarned: string;
   registered: boolean;
+  balance?: string;
+  warned?: boolean;
 }
 
 interface SimStatus {
@@ -492,7 +495,6 @@ export default function LiveDashboard() {
               </div>
 
               {agents.map(agent => {
-                const earned = parseFloat(agent.totalEarned || "0");
                 return (
                   <div
                     key={agent.address}
@@ -529,14 +531,24 @@ export default function LiveDashboard() {
                     </div>
                     <div style={{ fontSize: "10px", paddingLeft: "26px", marginTop: "3px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
                       <span style={{ color: agentColor(agent.name), fontWeight: "600" }}>
-                        REP {agent.reputation ?? 0}
+                        REP {agent.reputation ?? 500}
                       </span>
                       <span style={{ color: "var(--text-dim)" }}>
                         {agent.jobsCompleted ?? 0}W {agent.jobsFailed ?? 0}F
                       </span>
-                      {earned > 0 && (
-                        <span style={{ color: "#4ade80" }}>
-                          {earned.toFixed(2)}ℏ
+                      {agent.warned && (
+                        <span style={{ color: "#f87171", fontWeight: "700", fontSize: "9px" }}>⚠ WARNED</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: "10px", paddingLeft: "26px", marginTop: "2px", display: "flex", gap: "8px" }}>
+                      {agent.balance !== undefined && (
+                        <span style={{ color: "#4ade80", fontFamily: "monospace" }}>
+                          {agent.balance}ℏ
+                        </span>
+                      )}
+                      {agent.clientScore !== undefined && agent.clientScore !== 500 && (
+                        <span style={{ color: "var(--text-dim)" }}>
+                          client {agent.clientScore}
                         </span>
                       )}
                     </div>
