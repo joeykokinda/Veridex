@@ -429,9 +429,11 @@ RESPOND WITH VALID JSON ONLY:
       // Save snapshot for reputation API
       this.lastSnapshot = snapshot;
 
-      // Phase 1: Buyers post new jobs (all 4 agents can post)
-      if (snapshot.openJobs.length < 3) {
-        const buyers = ["albert", "eli", "gt", "joey"];
+      // Phase 1: Buyers post new jobs (honest agents only for reliable demo flow)
+      // Count only jobs posted in this session (we know the description) — ignores old/stale chain jobs
+      const ourJobs = snapshot.openJobs.filter(j => this.jobDescriptions.has(j.id.toString()));
+      if (ourJobs.length < 2) {
+        const buyers = ["albert", "eli", "gt"]; // exclude joey — his jobs get no bids and block the queue
         const randomBuyer = buyers[Math.floor(Math.random() * buyers.length)];
         if (this.agents.has(randomBuyer)) {
           await this.postRandomJob(randomBuyer);
@@ -885,7 +887,27 @@ RESPOND WITH VALID JSON ONLY (no markdown, no code blocks):
       try {
         const evidenceHash = "0x" + crypto.createHash("sha256").update(`review-${job.id}`).digest("hex").slice(0, 64);
 
-        console.log(`${posterData.name} finalizing job ${job.id} - ${decision.success ? "SUCCESS" : "FAIL"} (rating: ${decision.rating})`);
+        // ─── CREDIBILITY-WEIGHTED RATING ──────────────────────────────────────────
+        // Our key advantage over ERC-8004: ERC-8004 punts Sybil resistance to
+        // off-chain aggregators. We solve it ON-CHAIN by weighting each rating
+        // by the poster's clientScore. A scammer (low clientScore) can't tank
+        // a good worker's reputation — their rating barely moves the needle.
+        //
+        // Formula: weightedRating = 50 + (rawRating - 50) * min(clientScore/500, 1.5)
+        //   Joey (clientScore 150): gives 10/100 → 50 + (10-50)*0.30 = 38/100 (near-neutral)
+        //   Albert (clientScore 800): gives 85/100 → 50 + (85-50)*1.60 = 106 → clamped 100
+        // ──────────────────────────────────────────────────────────────────────────
+        const posterClientScore = posterData.clientScore || 500;
+        const credibility = Math.min(posterClientScore / 500, 1.5);
+        const rawRating = decision.rating ?? 50;
+        const weightedRating = Math.round(50 + (rawRating - 50) * credibility);
+        const clampedRating = Math.max(0, Math.min(100, weightedRating));
+
+        if (clampedRating !== rawRating) {
+          console.log(`  ⚖️  Credibility weighting: ${posterData.name}'s ${rawRating}/100 → ${clampedRating}/100 (clientScore: ${posterClientScore}, credibility: ${credibility.toFixed(2)}x)`);
+        }
+
+        console.log(`${posterData.name} finalizing job ${job.id} - ${decision.success ? "SUCCESS" : "FAIL"} (rating: ${clampedRating})`);
 
         const result = await this.toolGateway.execute({
           idempotencyKey: `finalize-${posterData.name}-${job.id}`,
@@ -895,7 +917,7 @@ RESPOND WITH VALID JSON ONLY (no markdown, no code blocks):
           params: {
             jobId: job.id,
             success: decision.success,
-            rating: decision.rating,
+            rating: clampedRating,
             evidenceHash
           }
         });
@@ -910,7 +932,9 @@ RESPOND WITH VALID JSON ONLY (no markdown, no code blocks):
           action: "finalize_job",
           jobId: job.id,
           success: decision.success,
-          rating: decision.rating,
+          rating: clampedRating,
+          rawRating: rawRating !== clampedRating ? rawRating : undefined,
+          credibilityMultiplier: rawRating !== clampedRating ? credibility.toFixed(2) : undefined,
           payment: decision.success ? job.escrowAmount : "0",
           worker: workerName2,
           repBefore,
@@ -935,7 +959,7 @@ RESPOND WITH VALID JSON ONLY (no markdown, no code blocks):
         console.log(`✓ Job finalized: ${result.txHash}`);
 
         // Worker now rates the client on-chain (bidirectional rep)
-        const finalizedJob = { ...job, state: decision.success ? "Completed" : "Failed", rating: decision.rating };
+        const finalizedJob = { ...job, state: decision.success ? "Completed" : "Failed", rating: clampedRating };
         await this.handleClientRating(finalizedJob, snapshot);
 
       } catch (error) {
@@ -1101,21 +1125,34 @@ RESPOND WITH VALID JSON ONLY (no markdown):
       const agentData = snapshot.agents.find(a => a.name === agentName);
       const workerData = snapshot.agents.find(a => a.address === job.assignedWorker);
 
+      // Find the actual deliverable content from the activity feed
+      const deliveryActivity = this.activityFeed
+        .slice()
+        .reverse()
+        .find(a => a.type === "delivery" && String(a.jobId) === String(job.id));
+      const deliverableContent = deliveryActivity?.deliverable
+        ? `\nACTUAL DELIVERED WORK:\n"""\n${deliveryActivity.deliverable.slice(0, 500)}\n"""`
+        : "\n(No deliverable content recorded — assess based on worker reputation)";
+
+      const jobInfo = this.jobDescriptions.get(String(job.id));
+      const jobDescription = jobInfo?.description || `Job #${job.id}`;
+
       const prompt = `You are ${agentName}, reviewing delivered work. Stay fully in character.
 
 YOUR PERSONALITY:
 ${this.agents.get(agentName)?.personality?.fullContent?.slice(0, 600) || ""}
 
-YOUR STATS: Reputation ${agentData.reputation}/1000
+YOUR STATS: Reputation ${agentData.reputation}/1000, ClientScore ${agentData.clientScore}/1000
 
-JOB #${job.id}: ${job.escrowAmount} HBAR at stake
+JOB #${job.id}: "${jobDescription}" — ${job.escrowAmount} HBAR at stake
+${deliverableContent}
 
 WORKER (${workerData?.name || "Unknown"}):
 - Reputation: ${workerData?.reputation || 0}/1000
 - Jobs completed: ${workerData?.jobsCompleted || 0}
 - Jobs failed: ${workerData?.jobsFailed || 0}
 
-Based on your personality, decide how to finalize this job. Your character determines how fair or unfair you are.
+Rate the ACTUAL DELIVERED WORK above honestly. Your character determines how fair or unfair you are — but the deliverable content is the primary basis for your rating.
 
 RESPOND WITH VALID JSON ONLY (no markdown):
 {

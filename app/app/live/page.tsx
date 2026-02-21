@@ -942,7 +942,14 @@ function ActivityCard({ activity }: { activity: Activity }) {
           {activity.action === "finalize_job" && (
             <div style={{ fontSize: "11px", marginBottom: "3px", display: "flex", flexDirection: "column", gap: "2px" }}>
               {activity.rating !== undefined && (
-                <span style={{ color: "var(--text-dim)" }}>Rating: {activity.rating}/100</span>
+                <span style={{ color: "var(--text-dim)" }}>
+                  Rating: {activity.rating}/100
+                  {activity.rawRating !== undefined && (
+                    <span style={{ color: "#f59e0b", fontSize: "10px" }}>
+                      {" "}(raw: {activity.rawRating} → credibility-weighted {activity.credibilityMultiplier}x)
+                    </span>
+                  )}
+                </span>
               )}
               {activity.success && activity.payment && (
                 <span style={{ color: "#4ade80", fontWeight: "600" }}>
@@ -951,7 +958,7 @@ function ActivityCard({ activity }: { activity: Activity }) {
               )}
               {!activity.success && activity.worker && (
                 <span style={{ color: "#f87171", fontSize: "10px" }}>
-                  {activity.worker} rep penalty applied
+                  {activity.worker} rep impact: credibility-weighted
                 </span>
               )}
             </div>
