@@ -118,6 +118,7 @@ function deriveJobs(activities: Activity[]): JobState[] {
 
   for (const a of sorted) {
     if (a.type === "action") {
+      // Create entry from post_job (ideal case)
       if (a.action === "post_job" && a.jobId && !jobs[a.jobId]) {
         jobs[a.jobId] = {
           jobId: a.jobId,
@@ -131,6 +132,22 @@ function deriveJobs(activities: Activity[]): JobState[] {
           posterTxLink: a.txLink,
         };
       }
+
+      // Create stub entry if we have job events but post_job was evicted from feed
+      if (a.jobId && !jobs[a.jobId] && a.action !== "post_job") {
+        // poster is whoever is accepting/finalizing; worker is the bidder/worker field
+        const poster = (a.action === "accept_bid" || a.action === "finalize_job") ? a.agent : "unknown";
+        jobs[a.jobId] = {
+          jobId: a.jobId,
+          description: a.description || "",
+          poster,
+          escrow: a.price || "",
+          status: "open",
+          bids: [],
+          postedAt: a.timestamp,
+        };
+      }
+
       if (a.action === "bid" && a.jobId && jobs[a.jobId]) {
         const alreadyBid = jobs[a.jobId].bids.some(b => b.agent === a.agent);
         if (!alreadyBid) {
@@ -150,9 +167,16 @@ function deriveJobs(activities: Activity[]): JobState[] {
         jobs[a.jobId].payment = a.payment;
         jobs[a.jobId].finalTxHash = a.txHash;
         jobs[a.jobId].finalTxLink = a.txLink;
+        // Infer winner from worker field if not already set
+        if (!jobs[a.jobId].winner && a.worker) {
+          jobs[a.jobId].winner = a.worker;
+        }
       }
     }
-    if (a.type === "delivery" && a.jobId && jobs[a.jobId]) {
+    if (a.type === "delivery" && a.jobId) {
+      if (!jobs[a.jobId]) {
+        jobs[a.jobId] = { jobId: a.jobId, description: "", poster: a.agent, escrow: "", status: "delivered", bids: [], postedAt: a.timestamp };
+      }
       jobs[a.jobId].deliverable = a.content;
     }
   }
