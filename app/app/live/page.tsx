@@ -21,6 +21,13 @@ interface Activity {
   timestamp: number;
   success?: boolean;
   rating?: number;
+  rawRating?: number;
+  credibilityMultiplier?: string;
+  jobType?: string;
+  bidId?: string;
+  clientName?: string;
+  targetName?: string;
+  reason?: string;
 }
 
 interface AgentInfo {
@@ -940,25 +947,45 @@ function ActivityCard({ activity }: { activity: Activity }) {
             </div>
           )}
           {activity.action === "finalize_job" && (
-            <div style={{ fontSize: "11px", marginBottom: "3px", display: "flex", flexDirection: "column", gap: "2px" }}>
-              {activity.rating !== undefined && (
-                <span style={{ color: "var(--text-dim)" }}>
-                  Rating: {activity.rating}/100
-                  {activity.rawRating !== undefined && (
-                    <span style={{ color: "#f59e0b", fontSize: "10px" }}>
-                      {" "}(raw: {activity.rawRating} → credibility-weighted {activity.credibilityMultiplier}x)
-                    </span>
-                  )}
-                </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "4px" }}>
+              {/* Credibility-weighting callout — shown prominently when it kicks in */}
+              {activity.rawRating !== undefined ? (
+                <div style={{
+                  padding: "8px 12px",
+                  background: "rgba(251,191,36,0.08)",
+                  border: "1px solid rgba(251,191,36,0.4)",
+                  borderRadius: "6px",
+                  fontSize: "11px",
+                  lineHeight: "1.6"
+                }}>
+                  <div style={{ fontWeight: "700", color: "#fbbf24", marginBottom: "3px" }}>
+                    ⚖️ Credibility Weighting Applied
+                  </div>
+                  <div style={{ color: "var(--text-dim)" }}>
+                    Raw rating: <span style={{ color: "#f87171", fontWeight: "600" }}>{activity.rawRating}/100</span>
+                    {" → "}
+                    Credibility-adjusted: <span style={{ color: "#4ade80", fontWeight: "600" }}>{activity.rating}/100</span>
+                    <span style={{ color: "#fbbf24" }}> ({activity.credibilityMultiplier}× multiplier)</span>
+                  </div>
+                  <div style={{ color: "var(--text-dim)", fontSize: "10px", marginTop: "2px" }}>
+                    Low-trust rater can't tank a worker's score — our ERC-8004 advantage
+                  </div>
+                </div>
+              ) : (
+                activity.rating !== undefined && (
+                  <span style={{ color: "var(--text-dim)", fontSize: "11px" }}>
+                    Rating: {activity.rating}/100
+                  </span>
+                )
               )}
               {activity.success && activity.payment && (
-                <span style={{ color: "#4ade80", fontWeight: "600" }}>
+                <span style={{ color: "#4ade80", fontWeight: "600", fontSize: "11px" }}>
                   {activity.worker ? `${activity.worker} paid ` : ""}{activity.payment} HBAR
                 </span>
               )}
               {!activity.success && activity.worker && (
                 <span style={{ color: "#f87171", fontSize: "10px" }}>
-                  {activity.worker} rep impact: credibility-weighted
+                  {activity.worker} — job failed, escrow returned to poster
                 </span>
               )}
             </div>

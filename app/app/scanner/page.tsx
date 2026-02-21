@@ -12,6 +12,8 @@ interface ChainEvent {
   blockNumber: number;
   timestamp: number;
   data: Record<string, string | number | boolean>;
+  // Full (non-truncated) addresses that appear in this event — used for name enrichment
+  rawAddresses?: string[];
 }
 
 const HEDERA_RPC = "https://testnet.hashio.io/api";
@@ -33,8 +35,9 @@ const MARKETPLACE_ABI = [
   "event JobFailedTimeout(uint256 indexed jobId, address indexed worker, uint256 timestamp)",
 ];
 
-// Known agent addresses (for display)
-const AGENT_NAMES: Record<string, string> = {};
+// Resolved agent names: address.toLowerCase() → display name
+// Populated at runtime by querying getAgent() for each unique address seen in events
+const resolvedNames: Record<string, string> = {};
 
 async function toHashScanUrl(evmHash: string): Promise<string | undefined> {
   try {
@@ -52,6 +55,25 @@ async function toHashScanUrl(evmHash: string): Promise<string | undefined> {
 
 function shortAddr(addr: string) {
   return `${addr.slice(0, 8)}...${addr.slice(-6)}`;
+}
+
+function displayAddr(addr: string, names: Record<string, string>) {
+  return names[addr.toLowerCase()] || shortAddr(addr);
+}
+
+async function resolveAgentNames(addresses: string[], provider: ethers.JsonRpcProvider, identityAddr: string): Promise<Record<string, string>> {
+  if (!identityAddr || addresses.length === 0) return {};
+  const contract = new ethers.Contract(identityAddr, [
+    "function getAgent(address) external view returns (tuple(string name, string description, string capabilities, uint256 registeredAt, bool active, bool verifiedMachineAgent, uint256 jobsCompleted, uint256 jobsFailed, uint256 totalEarned, uint256 reputationScore, uint256 totalRatings, uint256 clientScore, uint256 clientRatings, uint256 reportCount))"
+  ], provider);
+  const map: Record<string, string> = {};
+  await Promise.all(addresses.map(async (addr) => {
+    try {
+      const a = await contract.getAgent(addr);
+      if (a.name) map[addr.toLowerCase()] = a.name;
+    } catch { /* not registered */ }
+  }));
+  return map;
 }
 
 function eventColor(type: string) {
@@ -100,6 +122,7 @@ export default function ScannerPage() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
   const [lastBlock, setLastBlock] = useState(0);
+  const [agentNames, setAgentNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchEvents();
@@ -158,47 +181,62 @@ export default function ScannerPage() {
           data: { address: e.args[0] as string, payment: ethers.formatUnits(e.args[1], 8) + " HBAR", newRep: Number(e.args[2]) + "/1000" }
         });
       }
+      // Helper: store raw address in event for name enrichment
+      const rawAddr = (addr: unknown) => typeof addr === "string" ? addr : "";
+
       for (const e of jobPosted) {
         if (!("args" in e)) continue;
+        const addr = rawAddr(e.args[1]);
         allEvents.push({ type: "JobPosted", txHash: e.transactionHash, blockNumber: e.blockNumber,
           timestamp: Number(e.args[5]),
-          data: { jobId: "#" + Number(e.args[0]).toString(), poster: shortAddr(e.args[1] as string), escrow: ethers.formatUnits(e.args[3], 8) + " HBAR" }
+          rawAddresses: [addr],
+          data: { jobId: "#" + Number(e.args[0]).toString(), poster: addr, escrow: ethers.formatUnits(e.args[3], 8) + " HBAR" }
         });
       }
       for (const e of bidSubmitted) {
         if (!("args" in e)) continue;
+        const addr = rawAddr(e.args[2]);
         allEvents.push({ type: "BidSubmitted", txHash: e.transactionHash, blockNumber: e.blockNumber,
           timestamp: Number(e.args[5]),
-          data: { bidId: "#" + Number(e.args[0]).toString(), jobId: "#" + Number(e.args[1]).toString(), bidder: shortAddr(e.args[2] as string), price: ethers.formatUnits(e.args[3], 8) + " HBAR" }
+          rawAddresses: [addr],
+          data: { bidId: "#" + Number(e.args[0]).toString(), jobId: "#" + Number(e.args[1]).toString(), bidder: addr, price: ethers.formatUnits(e.args[3], 8) + " HBAR" }
         });
       }
       for (const e of bidAccepted) {
         if (!("args" in e)) continue;
+        const addr = rawAddr(e.args[2]);
         allEvents.push({ type: "BidAccepted", txHash: e.transactionHash, blockNumber: e.blockNumber,
           timestamp: Number(e.args[3]),
-          data: { jobId: "#" + Number(e.args[0]).toString(), bidId: "#" + Number(e.args[1]).toString(), worker: shortAddr(e.args[2] as string) }
+          rawAddresses: [addr],
+          data: { jobId: "#" + Number(e.args[0]).toString(), bidId: "#" + Number(e.args[1]).toString(), worker: addr }
         });
       }
       for (const e of deliverySubmitted) {
         if (!("args" in e)) continue;
+        const addr = rawAddr(e.args[1]);
         allEvents.push({ type: "DeliverySubmitted", txHash: e.transactionHash, blockNumber: e.blockNumber,
           timestamp: Number(e.args[3]),
-          data: { jobId: "#" + Number(e.args[0]).toString(), worker: shortAddr(e.args[1] as string) }
+          rawAddresses: [addr],
+          data: { jobId: "#" + Number(e.args[0]).toString(), worker: addr }
         });
       }
       for (const e of jobFinalized) {
         if (!("args" in e)) continue;
+        const addr = rawAddr(e.args[1]);
         const success = e.args[2] as boolean;
         allEvents.push({ type: "JobFinalized", txHash: e.transactionHash, blockNumber: e.blockNumber,
           timestamp: Number(e.args[6]),
-          data: { jobId: "#" + Number(e.args[0]).toString(), worker: shortAddr(e.args[1] as string), outcome: success ? "SUCCESS" : "FAILED", rating: Number(e.args[3]) + "/100", payment: ethers.formatUnits(e.args[4], 8) + " HBAR" }
+          rawAddresses: [addr],
+          data: { jobId: "#" + Number(e.args[0]).toString(), worker: addr, outcome: success ? "SUCCESS" : "FAILED", rating: Number(e.args[3]) + "/100", payment: ethers.formatUnits(e.args[4], 8) + " HBAR" }
         });
       }
       for (const e of jobTimeout) {
         if (!("args" in e)) continue;
+        const addr = rawAddr(e.args[1]);
         allEvents.push({ type: "JobFailedTimeout", txHash: e.transactionHash, blockNumber: e.blockNumber,
           timestamp: Number(e.args[2]),
-          data: { jobId: "#" + Number(e.args[0]).toString(), worker: shortAddr(e.args[1] as string) }
+          rawAddresses: [addr],
+          data: { jobId: "#" + Number(e.args[0]).toString(), worker: addr }
         });
       }
 
@@ -206,6 +244,12 @@ export default function ScannerPage() {
       setEvents(allEvents);
       setLoading(false);
       setError("");
+
+      // Resolve agent names for all unique addresses seen in events
+      const uniqueAddrs = [...new Set(allEvents.flatMap(e => e.rawAddresses || []).filter(Boolean))];
+      const names = await resolveAgentNames(uniqueAddrs, provider, IDENTITY_ADDRESS);
+      // Merge with previously cached names so we don't lose them between polls
+      setAgentNames(prev => ({ ...prev, ...names }));
 
       // Resolve HashScan URLs in background (first 30 events, in parallel)
       const toResolve = allEvents.slice(0, 30);
@@ -354,12 +398,22 @@ export default function ScannerPage() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
                           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", flex: 1 }}>
-                            {Object.entries(event.data).map(([k, v]) => (
-                              <span key={k} style={{ fontSize: "12px" }}>
-                                <span className="text-dim">{k}: </span>
-                                <span style={{ fontWeight: "500" }}>{String(v)}</span>
-                              </span>
-                            ))}
+                            {Object.entries(event.data).map(([k, v]) => {
+                              const raw = String(v);
+                              // If value is a full EVM address, resolve to agent name
+                              const display = raw.startsWith("0x") && raw.length === 42
+                                ? displayAddr(raw, agentNames)
+                                : raw;
+                              const isName = display !== raw && display !== shortAddr(raw);
+                              return (
+                                <span key={k} style={{ fontSize: "12px" }}>
+                                  <span className="text-dim">{k}: </span>
+                                  <span style={{ fontWeight: "500", color: isName ? "var(--accent)" : "inherit" }}>
+                                    {display}
+                                  </span>
+                                </span>
+                              );
+                            })}
                           </div>
                           <div style={{ textAlign: "right", flexShrink: 0 }}>
                             <div className="text-dim" style={{ fontSize: "10px" }}>

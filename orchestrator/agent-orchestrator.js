@@ -41,6 +41,10 @@ class AgentOrchestrator {
 
     // Track job descriptions so workers know what to deliver (on-chain only stores hash)
     this.jobDescriptions = new Map(); // jobId → { description, type: "poem"|"art" }
+
+    // Persist activity feed across restarts
+    this._feedPersistPath = path.join(__dirname, "../logs/activity-feed.json");
+    this._loadPersistedFeed();
     this.lastJobType = "art"; // alternate: next will be "poem"
 
     // Track how many ticks each job has been "waiting" without bid acceptance — force after 3
@@ -422,6 +426,35 @@ RESPOND WITH VALID JSON ONLY:
   }
 
   /**
+   * Load persisted activity feed from disk (survives orchestrator restarts)
+   */
+  _loadPersistedFeed() {
+    try {
+      if (fs.existsSync(this._feedPersistPath)) {
+        const saved = JSON.parse(fs.readFileSync(this._feedPersistPath, "utf-8"));
+        if (Array.isArray(saved) && saved.length > 0) {
+          this.activityFeed = saved.slice(0, this.maxFeedSize);
+          console.log(`Loaded ${this.activityFeed.length} activity entries from persisted feed`);
+        }
+      }
+    } catch (e) {
+      console.log("Could not load persisted activity feed (starting fresh)");
+    }
+  }
+
+  /**
+   * Save activity feed to disk (called after each tick)
+   */
+  _persistFeed() {
+    try {
+      fs.mkdirSync(path.dirname(this._feedPersistPath), { recursive: true });
+      fs.writeFileSync(this._feedPersistPath, JSON.stringify(this.activityFeed.slice(0, 150)));
+    } catch (e) {
+      // non-fatal
+    }
+  }
+
+  /**
    * Get activity feed for UI
    */
   getActivityFeed() {
@@ -506,6 +539,7 @@ RESPOND WITH VALID JSON ONLY:
     } finally {
       clearTimeout(tickTimeout);
       this.tickRunning = false;
+      this._persistFeed();
     }
   }
 

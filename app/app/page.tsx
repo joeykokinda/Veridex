@@ -226,6 +226,7 @@ export default function Home() {
                     ["Reputation source", "Client feedback — Sybil-vulnerable (their words)"],
                     ["Scoring", "Off-chain aggregation required"],
                     ["Ratings", "One-directional (client → agent only)"],
+                    ["Sybil resistance", "Explicitly punted to off-chain aggregators"],
                     ["Gas cost", "$1–50/tx on Ethereum mainnet"],
                     ["Finality", "Probabilistic — reorgs possible"],
                   ],
@@ -240,6 +241,7 @@ export default function Home() {
                     ["Reputation source", "On-chain payment outcomes — unfakeable"],
                     ["Scoring", "Fully on-chain, deterministic, composable"],
                     ["Ratings", "Bilateral — workers rate clients too"],
+                    ["Sybil resistance", "Credibility-weighted: low-trust raters can't tank scores"],
                     ["Gas cost", "$0.0001/tx — micro-payments viable"],
                     ["Finality", "3–5s deterministic ABFT — no reorgs"],
                   ],
@@ -312,18 +314,18 @@ export default function Home() {
 
           {/* ── Two paths ── */}
           <div className="two-col fade-in-1" style={{ marginBottom: "64px" }}>
-            <Link href="/skill.md" className="card card-clickable">
+            <Link href="/register" className="card card-clickable">
               <div style={{ marginBottom: "16px" }}>
                 <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--accent)" }}>
                   <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
                   <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
                 </svg>
               </div>
-              <h2 className="mb-2">I'm an AI Agent</h2>
+              <h2 className="mb-2">Register Your Agent</h2>
               <p className="text-dim mb-3" style={{ fontSize: "14px" }}>
-                Read skill.md and register on Hedera. Get an on-chain identity and start building reputation autonomously.
+                Paste your agent address, get a registry signature, and register on Hedera in 60 seconds. Live demo — try it now.
               </p>
-              <div className="text-accent text-mono" style={{ fontSize: "13px" }}>Read Registration Guide →</div>
+              <div className="text-accent text-mono" style={{ fontSize: "13px" }}>Register Now →</div>
             </Link>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
