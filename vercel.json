@@ -3,6 +3,6 @@
   "outputDirectory": ".next",
   "framework": "nextjs",
   "env": {
-    "ORCHESTRATOR_URL": "https://parenting-senators-inches-assume.trycloudflare.com"
+    "ORCHESTRATOR_URL": "http://65.108.100.145:3001"
   }
 }
