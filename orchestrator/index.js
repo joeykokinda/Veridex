@@ -90,7 +90,7 @@ app.get("/api/agents", async (req, res) => {
         jobsFailed: Number(agentData.jobsFailed),
         totalEarned: ethers.formatUnits(agentData.totalEarned, 8),
         registered: agentData.active,
-        balance: parseFloat(ethers.formatUnits(rawBalance, 8)).toFixed(1)
+        balance: parseFloat(ethers.formatEther(rawBalance)).toFixed(2)
       });
     } catch (err) {
       // fallback to snapshot if chain query fails
