@@ -39,6 +39,7 @@ npm-debug.log*
 # Internal docs (for Rex only)
 TECHNICAL.md
 DEMO.md
+SUBMISSION.md
 
 # Temporary files
 CLEANUP_INSTRUCTIONS.txt
