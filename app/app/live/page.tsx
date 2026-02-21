@@ -462,7 +462,7 @@ export default function LiveDashboard() {
             </span>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "200px 340px 1fr", gap: "14px", alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "240px 320px 1fr", gap: "14px", alignItems: "start" }}>
 
             {/* ── COL 1: Agent Roster ── */}
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -495,60 +495,92 @@ export default function LiveDashboard() {
               </div>
 
               {agents.map(agent => {
+                const col = agentColor(agent.name);
+                const workerRep = agent.reputation ?? 500;
+                const clientRep = agent.clientScore ?? 500;
+                const isSelected = selectedAgent === agent.name;
                 return (
                   <div
                     key={agent.address}
-                    onClick={() => setSelectedAgent(selectedAgent === agent.name ? null : agent.name)}
+                    onClick={() => setSelectedAgent(isSelected ? null : agent.name)}
                     style={{
-                      padding: "8px 10px", borderRadius: "6px", cursor: "pointer",
-                      background: selectedAgent === agent.name ? `${agentColor(agent.name)}22` : "var(--bg-secondary)",
-                      border: `1px solid ${selectedAgent === agent.name ? agentColor(agent.name) : "var(--border)"}`,
+                      padding: "10px 12px", borderRadius: "8px", cursor: "pointer",
+                      background: isSelected ? `${col}18` : "var(--bg-secondary)",
+                      border: `1px solid ${isSelected ? col : "var(--border)"}`,
                       transition: "all 0.15s"
                     }}
                   >
-                    <div className="flex items-center gap-2 mb-1">
-                      <AgentAvatar name={agent.name} size={18} />
-                      <span style={{ fontWeight: "600", fontSize: "12px", textTransform: "capitalize" }}>{agent.name}</span>
-                      <button
-                        onClick={e => { e.stopPropagation(); setModalAgent(agent.name); }}
-                        style={{
-                          marginLeft: "4px", padding: "1px 5px",
-                          fontSize: "9px", fontWeight: "600", letterSpacing: "0.3px",
-                          background: `${agentColor(agent.name)}20`,
-                          border: `1px solid ${agentColor(agent.name)}44`,
-                          borderRadius: "3px", color: agentColor(agent.name),
-                          cursor: "pointer", lineHeight: "1.4"
-                        }}
-                      >
-                        MD
-                      </button>
-                      <span style={{ marginLeft: "auto", fontSize: "10px", color: "var(--text-dim)" }}>
-                        {activityCounts[agent.name] || 0}
-                      </span>
+                    {/* Header row */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                      <AgentAvatar name={agent.name} size={22} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span style={{ fontWeight: "700", fontSize: "13px", textTransform: "capitalize", color: col }}>
+                            {agent.name}
+                          </span>
+                          {agent.warned && (
+                            <span style={{ fontSize: "9px", fontWeight: "700", color: "#f87171", padding: "1px 4px", background: "rgba(248,113,113,0.15)", border: "1px solid rgba(248,113,113,0.4)", borderRadius: "3px" }}>
+                              ⚠ WARN
+                            </span>
+                          )}
+                          <button
+                            onClick={e => { e.stopPropagation(); setModalAgent(agent.name); }}
+                            style={{
+                              marginLeft: "auto", padding: "1px 5px",
+                              fontSize: "9px", fontWeight: "600",
+                              background: `${col}18`, border: `1px solid ${col}44`,
+                              borderRadius: "3px", color: col,
+                              cursor: "pointer", lineHeight: "1.5"
+                            }}
+                          >
+                            MD
+                          </button>
+                        </div>
+                        <div style={{ fontSize: "10px", color: "var(--text-dim)", marginTop: "1px" }}>
+                          {AGENT_ROLES[agent.name] || agent.mode}
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ fontSize: "10px", color: "var(--text-dim)", paddingLeft: "26px" }}>
-                      {AGENT_ROLES[agent.name] || agent.mode}
+
+                    {/* Score rows */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                      {/* Worker reputation */}
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "3px" }}>
+                          <span style={{ fontSize: "9px", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.4px" }}>Worker Rep</span>
+                          <span style={{ fontSize: "12px", fontWeight: "700", color: workerRep >= 700 ? "#4ade80" : workerRep >= 500 ? "#fbbf24" : "#f87171", fontFamily: "monospace" }}>
+                            {workerRep}
+                          </span>
+                        </div>
+                        <div style={{ height: "3px", background: "var(--bg-tertiary)", borderRadius: "2px", overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${(workerRep / 1000) * 100}%`, background: workerRep >= 700 ? "#4ade80" : workerRep >= 500 ? "#fbbf24" : "#f87171", borderRadius: "2px", transition: "width 0.5s" }} />
+                        </div>
+                      </div>
+
+                      {/* Client reputation */}
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "3px" }}>
+                          <span style={{ fontSize: "9px", color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.4px" }}>Client Rep</span>
+                          <span style={{ fontSize: "12px", fontWeight: "700", color: clientRep >= 700 ? "#a78bfa" : clientRep >= 500 ? "#fbbf24" : "#f87171", fontFamily: "monospace" }}>
+                            {clientRep}
+                          </span>
+                        </div>
+                        <div style={{ height: "3px", background: "var(--bg-tertiary)", borderRadius: "2px", overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${(clientRep / 1000) * 100}%`, background: clientRep >= 700 ? "#a78bfa" : clientRep >= 500 ? "#fbbf24" : "#f87171", borderRadius: "2px", transition: "width 0.5s" }} />
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ fontSize: "10px", paddingLeft: "26px", marginTop: "3px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                      <span style={{ color: agentColor(agent.name), fontWeight: "600" }}>
-                        REP {agent.reputation ?? 500}
+
+                    {/* Footer: W/F + balance */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px", paddingTop: "7px", borderTop: "1px solid var(--border)" }}>
+                      <span style={{ fontSize: "10px", color: "var(--text-dim)", fontFamily: "monospace" }}>
+                        <span style={{ color: "#4ade80" }}>{agent.jobsCompleted ?? 0}W</span>
+                        {" "}
+                        <span style={{ color: "#f87171" }}>{agent.jobsFailed ?? 0}F</span>
                       </span>
-                      <span style={{ color: "var(--text-dim)" }}>
-                        {agent.jobsCompleted ?? 0}W {agent.jobsFailed ?? 0}F
-                      </span>
-                      {agent.warned && (
-                        <span style={{ color: "#f87171", fontWeight: "700", fontSize: "9px" }}>⚠ WARNED</span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: "10px", paddingLeft: "26px", marginTop: "2px", display: "flex", gap: "8px" }}>
                       {agent.balance !== undefined && (
-                        <span style={{ color: "#4ade80", fontFamily: "monospace" }}>
-                          {agent.balance}ℏ
-                        </span>
-                      )}
-                      {agent.clientScore !== undefined && agent.clientScore !== 500 && (
-                        <span style={{ color: "var(--text-dim)" }}>
-                          client {agent.clientScore}
+                        <span style={{ fontSize: "11px", color: "#4ade80", fontFamily: "monospace", fontWeight: "600" }}>
+                          ℏ{agent.balance}
                         </span>
                       )}
                     </div>

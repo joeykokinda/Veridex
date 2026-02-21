@@ -26,9 +26,14 @@ class AgentOrchestrator {
     this.startTime = null;
     this.lastTickTime = null;
     
-    // Activity feed for UI
+    // Activity feed for UI (capped — reasoning events fill it fast)
     this.activityFeed = [];
-    this.maxFeedSize = 200;
+    this.maxFeedSize = 500;
+
+    // Job-lifecycle events — NEVER evicted (post, bid, accept, deliver, finalize, rating)
+    // Merged into activityFeed on read so the job board always shows full history
+    this.jobEvents = [];
+    this._jobEventsPersistPath = path.join(__dirname, "../logs/job-events.json");
 
     // Track last snapshot for reputation display
     this.lastSnapshot = null;
@@ -45,6 +50,7 @@ class AgentOrchestrator {
     // Persist activity feed across restarts
     this._feedPersistPath = path.join(__dirname, "../logs/activity-feed.json");
     this._loadPersistedFeed();
+    this._loadPersistedJobEvents();
     this.lastJobType = "data_report"; // alternate: next will be "market_analysis"
 
     // Track how many ticks each job has been "waiting" without bid acceptance — force after 3
@@ -387,6 +393,16 @@ RESPOND WITH VALID JSON ONLY:
     if (this.activityFeed.length > this.maxFeedSize) {
       this.activityFeed.pop();
     }
+    // Also store job-lifecycle events separately so they are never evicted
+    // (reasoning events dominate the main feed and push out finalize/bid events)
+    const isJobEvent = (
+      (activity.type === "action"        && activity.jobId) ||
+      (activity.type === "delivery"      && activity.jobId) ||
+      (activity.type === "client_rating" && activity.jobId)
+    );
+    if (isJobEvent) {
+      this.jobEvents.unshift(activity);
+    }
   }
 
   /**
@@ -443,22 +459,51 @@ RESPOND WITH VALID JSON ONLY:
   }
 
   /**
-   * Save activity feed to disk (called after each tick)
+   * Load persisted job events from disk (job lifecycle events never evicted)
+   */
+  _loadPersistedJobEvents() {
+    try {
+      if (fs.existsSync(this._jobEventsPersistPath)) {
+        const saved = JSON.parse(fs.readFileSync(this._jobEventsPersistPath, "utf-8"));
+        if (Array.isArray(saved) && saved.length > 0) {
+          this.jobEvents = saved;
+          console.log(`Loaded ${this.jobEvents.length} job events from persistence`);
+        }
+      }
+    } catch (e) {
+      console.log("Could not load persisted job events (starting fresh)");
+    }
+  }
+
+  /**
+   * Save activity feed and job events to disk (called after each tick)
    */
   _persistFeed() {
     try {
       fs.mkdirSync(path.dirname(this._feedPersistPath), { recursive: true });
-      fs.writeFileSync(this._feedPersistPath, JSON.stringify(this.activityFeed.slice(0, 150)));
+      fs.writeFileSync(this._feedPersistPath, JSON.stringify(this.activityFeed.slice(0, this.maxFeedSize)));
+      fs.writeFileSync(this._jobEventsPersistPath, JSON.stringify(this.jobEvents));
     } catch (e) {
       // non-fatal
     }
   }
 
   /**
-   * Get activity feed for UI
+   * Get activity feed for UI — merges job events (never expire) with recent
+   * activity so the job board always shows full lifecycle even after the
+   * reasoning events crowd out the finalize/bid entries.
    */
   getActivityFeed() {
-    return this.activityFeed;
+    const seen = new Set();
+    const merged = [];
+    for (const a of [...this.activityFeed, ...this.jobEvents]) {
+      const key = `${a.timestamp}-${a.agent}-${a.type}-${a.action || ""}-${a.jobId || ""}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(a);
+      }
+    }
+    return merged.sort((a, b) => b.timestamp - a.timestamp);
   }
 
   /**

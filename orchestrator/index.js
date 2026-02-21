@@ -88,9 +88,9 @@ app.get("/api/agents", async (req, res) => {
         warned: Number(agentData.reportCount) >= 2,
         jobsCompleted: Number(agentData.jobsCompleted),
         jobsFailed: Number(agentData.jobsFailed),
-        totalEarned: ethers.formatEther(agentData.totalEarned),
+        totalEarned: ethers.formatUnits(agentData.totalEarned, 8),
         registered: agentData.active,
-        balance: parseFloat(ethers.formatEther(rawBalance)).toFixed(2)
+        balance: parseFloat(ethers.formatUnits(rawBalance, 8)).toFixed(1)
       });
     } catch (err) {
       // fallback to snapshot if chain query fails
