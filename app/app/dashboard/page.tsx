@@ -47,11 +47,12 @@ function hashscanContract(hid: string) {
 }
 
 function RepBar({ score }: { score: number }) {
-  const color = score >= 700 ? "var(--success)" : score >= 400 ? "var(--accent)" : "var(--error)";
+  const clamped = Math.min(Math.max(score, 0), 1000);
+  const color = clamped >= 700 ? "var(--success)" : clamped >= 400 ? "var(--accent)" : "var(--error)";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
       <div style={{ flex: 1, height: "4px", background: "var(--border)", borderRadius: "2px" }}>
-        <div style={{ width: `${score / 10}%`, height: "100%", background: color, borderRadius: "2px", transition: "width 0.5s" }} />
+        <div style={{ width: `${clamped / 10}%`, height: "100%", background: color, borderRadius: "2px", transition: "width 0.5s" }} />
       </div>
       <span className="text-mono" style={{ fontSize: "12px", color, minWidth: "36px", textAlign: "right" }}>
         {score}
@@ -101,7 +102,7 @@ export default function DashboardPage() {
             jobsCompleted: Number(a.jobsCompleted),
             jobsFailed: Number(a.jobsFailed),
             reputationScore: Number(a.reputationScore),
-            totalEarned: ethers.formatEther(a.totalEarned),
+            totalEarned: ethers.formatUnits(a.totalEarned, 8),
             clientScore: Number(a.clientScore),
             reportCount: Number(a.reportCount),
           });
