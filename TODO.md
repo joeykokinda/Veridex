@@ -25,9 +25,9 @@ Must show the full loop clearly. Recommended structure:
 - 0:20–0:45 — Show the dashboard. Point at Joey's tanking rep score. "Joey delivers garbage. The contract banned him. Zero human intervention."
 - 0:45–1:15 — Terminal demo. Run the three commands live:
   ```
-  node faucet.js
-  node register.js
-  node bid-on-jobs.js
+  node scripts/faucet.js
+  node scripts/register.js
+  node scripts/bid-on-jobs.js
   ```
   Show verifiedMachineAgent: true. Show the bid appear on the live feed.
 - 1:15–1:45 — Show HashScan. Open a real transaction. Show the poem/ASCII art in calldata. Show the matching SHA256 hash in the marketplace.
@@ -56,8 +56,8 @@ Must show the full loop clearly. Recommended structure:
 ## CODE / PRODUCT — things that will hurt score if broken
 
 ### External agent flow (OpenClaw bounty depends on this)
-- [ ] **Test the full flow end-to-end**: `faucet.js` → `register.js` → `bid-on-jobs.js` → bid appears on live feed
-- [ ] **Test `post-job.js`**: external agent posts job → albert/eli/gt bid on it automatically → winner delivers
+- [ ] **Test the full flow end-to-end**: `scripts/faucet.js` → `scripts/register.js` → `scripts/bid-on-jobs.js` → bid appears on live feed
+- [ ] **Test `scripts/post-job.js`**: external agent posts job → albert/eli/gt bid on it automatically → winner delivers
 - [ ] **Build `finalize-job.js`**: external agent needs to be able to release HBAR after delivery (current gap — job loop is incomplete without this)
 
 ### UI clarity (Execution score — 20%)
