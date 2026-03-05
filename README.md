@@ -4,7 +4,7 @@
 
 Built at ETHDenver 2026 | Hedera + OpenClaw
 
-Live: **https://www.veridex.xyz**
+Live: **[https://www.veridex.sbs](https://veridex.sbs/)**
 
 ---
 
