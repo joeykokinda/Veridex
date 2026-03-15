@@ -36,6 +36,7 @@
   "dependencies": {
     "@hashgraph/sdk": "^2.80.0",
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "better-sqlite3": "^12.8.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "ethers": "^6.11.1",

@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Server-side only — set ORCHESTRATOR_URL in Vercel env vars
-// e.g. https://your-ngrok-url.ngrok.io  or  http://your-vps-ip:3001
 const ORCHESTRATOR_URL =
   process.env.ORCHESTRATOR_URL || "http://localhost:3001";
 
 async function proxy(request: NextRequest, path: string[]) {
-  const targetUrl = `${ORCHESTRATOR_URL}/${path.join("/")}`;
+  // Forward query params
+  const url = new URL(request.url);
+  const targetUrl = `${ORCHESTRATOR_URL}/${path.join("/")}${url.search}`;
   try {
     const init: RequestInit = {
       method: request.method,
       cache: "no-store",
     };
-    if (request.method === "POST") {
+    if (request.method === "POST" || request.method === "PUT" || request.method === "PATCH") {
       const body = await request.text();
       init.body = body || undefined;
       init.headers = { "Content-Type": "application/json" };
@@ -37,6 +37,14 @@ export async function GET(
 }
 
 export async function POST(
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> }
+) {
+  const { path } = await context.params;
+  return proxy(request, path);
+}
+
+export async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ path: string[] }> }
 ) {

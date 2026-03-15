@@ -10,7 +10,16 @@ const AgentOrchestrator = require("./agent-orchestrator");
 const path = require("path");
 const { ethers } = require("ethers");
 const { Client, PrivateKey, Hbar, TransferTransaction, AccountId } = require("@hashgraph/sdk");
-require("dotenv").config();
+require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
+
+// Veridex trust layer modules
+const db = require("./veridex-db");
+const { checkBlocking, assessRisk, decodeAction } = require("./blocking");
+const { createAgentTopic, writeToHCS, topicHashScanUrl } = require("./hcs-logger");
+const { sendAlert } = require("./telegram");
+
+// SSE clients for live feed
+const liveClients = new Set();
 
 // Load ABIs
 const AgentIdentity = require("../artifacts/contracts/AgentIdentity.sol/AgentIdentity.json");
@@ -443,19 +452,388 @@ app.post("/api/faucet", async (req, res) => {
   }
 });
 
+// ── Veridex Trust Layer API ────────────────────────────────────────────────────
+
+/**
+ * POST /api/log
+ * Core skill webhook — called by OpenClaw agents before/after every tool use.
+ * Runs blocking checks, writes to HCS, stores in SQLite, fires alerts.
+ */
+app.post("/api/log", async (req, res) => {
+  const { agentId, sessionId, action, tool, params, phase, timestamp, riskLevel: clientRisk } = req.body;
+
+  if (!agentId) {
+    return res.status(400).json({ error: "agentId required" });
+  }
+
+  // Ensure agent exists in DB (auto-create if unknown, get policies)
+  let agentRecord = db.getAgent(agentId);
+  if (!agentRecord) {
+    db.upsertAgent({ id: agentId, name: agentId });
+    agentRecord = db.getAgent(agentId);
+  }
+
+  const policies = db.getAgentPolicies(agentId);
+  const blockResult = checkBlocking(agentId, action, tool, params, policies);
+
+  if (blockResult) {
+    // Blocked — log it, alert, return denied
+    const description = decodeAction({ action, tool, params, result: "blocked" });
+    const logId = db.insertLog({
+      agentId, sessionId, action, tool, params,
+      description,
+      result: "blocked",
+      riskLevel: "blocked",
+      blockReason: blockResult.reason,
+      phase,
+      timestamp: timestamp || Date.now()
+    });
+
+    // Write to HCS async (don't block response)
+    if (agentRecord.hcs_topic_id) {
+      writeToHCS(agentRecord.hcs_topic_id, {
+        logId, agentId, action, tool, params: params ? sanitizeParams(params) : null,
+        result: "blocked", riskLevel: "blocked",
+        blockReason: blockResult.reason, phase,
+        timestamp: timestamp || Date.now()
+      }).then(hcsResult => {
+        if (hcsResult?.sequenceNumber) {
+          db.insertLog({ agentId, sessionId, action, tool, params, description, result: "blocked",
+            riskLevel: "blocked", blockReason: blockResult.reason, phase,
+            hcsSequenceNumber: hcsResult.sequenceNumber, timestamp: timestamp || Date.now() });
+        }
+      }).catch(() => {});
+    }
+
+    // Insert alert
+    const alertId = db.insertAlert({
+      agentId,
+      triggerType: "blocked",
+      description: `${blockResult.reason} | Tool: ${tool || action}`,
+      timestamp: Date.now()
+    });
+
+    // Telegram alert
+    sendAlert({
+      agentId,
+      agentName: agentRecord.name,
+      triggerType: "blocked",
+      description: `Action blocked: *${tool || action}*\nReason: ${blockResult.reason}`,
+      topicId: agentRecord.hcs_topic_id
+    }).catch(() => {});
+
+    // Broadcast to SSE live clients
+    broadcastLiveEvent({
+      type: "log",
+      log: {
+        id: logId, agentId, agentName: agentRecord.name,
+        action, tool, description,
+        riskLevel: "blocked", blockReason: blockResult.reason,
+        phase, timestamp: timestamp || Date.now()
+      }
+    });
+
+    return res.json({ allowed: false, reason: blockResult.reason });
+  }
+
+  // Allowed — assess risk, log it
+  const risk = clientRisk || assessRisk(action, tool, params);
+  const description = decodeAction({ action, tool, params, result: "success" });
+
+  const logId = db.insertLog({
+    agentId, sessionId, action, tool, params, description,
+    result: "success", riskLevel: risk, phase,
+    timestamp: timestamp || Date.now()
+  });
+
+  // HCS write async
+  if (agentRecord.hcs_topic_id) {
+    writeToHCS(agentRecord.hcs_topic_id, {
+      logId, agentId, action, tool,
+      params: params ? sanitizeParams(params) : null,
+      result: "success", riskLevel: risk, phase,
+      timestamp: timestamp || Date.now()
+    }).then(hcsResult => {
+      if (hcsResult?.sequenceNumber) {
+        // Update log with HCS sequence number
+        try {
+          db.getDb().prepare("UPDATE logs SET hcs_sequence_number = ? WHERE id = ?")
+            .run(hcsResult.sequenceNumber, logId);
+        } catch {}
+      }
+    }).catch(() => {});
+  }
+
+  // Alert on high risk
+  if (risk === "high") {
+    db.insertAlert({
+      agentId,
+      triggerType: "high_risk",
+      description: `High-risk action: ${tool || action}`,
+      timestamp: Date.now()
+    });
+    sendAlert({
+      agentId,
+      agentName: agentRecord.name,
+      triggerType: "high_risk",
+      description: `High-risk action detected: *${tool || action}*`,
+      topicId: agentRecord.hcs_topic_id
+    }).catch(() => {});
+  }
+
+  // Broadcast to SSE
+  broadcastLiveEvent({
+    type: "log",
+    log: {
+      id: logId, agentId, agentName: agentRecord.name,
+      action, tool, description, riskLevel: risk, phase,
+      timestamp: timestamp || Date.now()
+    }
+  });
+
+  res.json({ allowed: true, logId, riskLevel: risk });
+});
+
+function sanitizeParams(params) {
+  // Never persist secrets in logs
+  const REDACT = ["password", "secret", "key", "token", "auth", "credential"];
+  const result = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (REDACT.some(r => k.toLowerCase().includes(r))) {
+      result[k] = "[REDACTED]";
+    } else if (typeof v === "string" && v.length > 500) {
+      result[k] = v.slice(0, 500) + "…";
+    } else {
+      result[k] = v;
+    }
+  }
+  return result;
+}
+
+function broadcastLiveEvent(event) {
+  const data = `data: ${JSON.stringify(event)}\n\n`;
+  for (const client of liveClients) {
+    try { client.write(data); } catch {}
+  }
+}
+
+/**
+ * POST /api/agent/register-monitor
+ * Register an agent with the Veridex monitoring system.
+ * Creates an HCS topic and stores agent in DB.
+ * Body: { agentId, ownerWallet, name, hederaAccountId }
+ */
+app.post("/api/agent/register-monitor", async (req, res) => {
+  const { agentId, ownerWallet, name, hederaAccountId } = req.body;
+  if (!agentId) return res.status(400).json({ error: "agentId required" });
+
+  let agentRecord = db.getAgent(agentId);
+
+  // Create HCS topic if agent doesn't have one
+  let hcsTopicId = agentRecord?.hcs_topic_id;
+  if (!hcsTopicId) {
+    const topicResult = await createAgentTopic(agentId, name || agentId);
+    hcsTopicId = topicResult?.topicId || null;
+  }
+
+  db.upsertAgent({ id: agentId, ownerWallet, hederaAccountId, hcsTopicId, name });
+  agentRecord = db.getAgent(agentId);
+
+  res.json({
+    agentId,
+    hcsTopicId,
+    hashScanUrl: hcsTopicId ? topicHashScanUrl(hcsTopicId) : null,
+    logEndpoint: "/api/log",
+    message: "Agent registered with Veridex monitoring. Send logs to POST /api/log"
+  });
+});
+
+/**
+ * GET /api/monitor/agents
+ * List all monitored agents (optionally filter by ownerWallet).
+ */
+app.get("/api/monitor/agents", (req, res) => {
+  const { wallet } = req.query;
+  const agents = wallet ? db.getAgentsByOwner(wallet) : db.getAllAgents();
+  const enriched = agents.map(a => ({
+    ...a,
+    stats: db.getAgentStats(a.id),
+    activeAlerts: db.getActiveAlertCount(a.id),
+    hashScanUrl: a.hcs_topic_id ? topicHashScanUrl(a.hcs_topic_id) : null
+  }));
+  res.json({ agents: enriched });
+});
+
+/**
+ * GET /api/monitor/agent/:agentId/feed
+ * Paginated log history for an agent.
+ */
+app.get("/api/monitor/agent/:agentId/feed", (req, res) => {
+  const { agentId } = req.params;
+  const limit  = Math.min(parseInt(req.query.limit  || "50"), 200);
+  const offset = parseInt(req.query.offset || "0");
+  const { riskLevel, action } = req.query;
+
+  const agent = db.getAgent(agentId);
+  if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+  const logs = db.getAgentLogs(agentId, { limit, offset, riskLevel, action });
+  const decoded = logs.map(l => ({ ...l, description: l.description || decodeAction(l) }));
+  res.json({ logs: decoded, agentId, total: logs.length });
+});
+
+/**
+ * GET /api/monitor/agent/:agentId/stats
+ */
+app.get("/api/monitor/agent/:agentId/stats", (req, res) => {
+  const agent = db.getAgent(req.params.agentId);
+  if (!agent) return res.status(404).json({ error: "Agent not found" });
+  const stats    = db.getAgentStats(req.params.agentId);
+  const earnings = db.getAgentEarnings(req.params.agentId);
+  const alerts   = db.getAgentAlerts(req.params.agentId, { limit: 10 });
+  res.json({
+    agent,
+    stats,
+    earnings,
+    recentAlerts: alerts,
+    hashScanUrl: agent.hcs_topic_id ? topicHashScanUrl(agent.hcs_topic_id) : null
+  });
+});
+
+/**
+ * GET /api/monitor/agent/:agentId/alerts
+ */
+app.get("/api/monitor/agent/:agentId/alerts", (req, res) => {
+  const agent = db.getAgent(req.params.agentId);
+  if (!agent) return res.status(404).json({ error: "Agent not found" });
+  const alerts = db.getAgentAlerts(req.params.agentId, {
+    limit: parseInt(req.query.limit || "50"),
+    status: req.query.status
+  });
+  res.json({ alerts });
+});
+
+/**
+ * POST /api/monitor/alert/:alertId/resolve
+ */
+app.post("/api/monitor/alert/:alertId/resolve", (req, res) => {
+  db.resolveAlert(req.params.alertId);
+  res.json({ success: true });
+});
+
+/**
+ * GET /api/monitor/agent/:agentId/policies
+ */
+app.get("/api/monitor/agent/:agentId/policies", (req, res) => {
+  const agent = db.getAgent(req.params.agentId);
+  if (!agent) return res.status(404).json({ error: "Agent not found" });
+  res.json({ policies: db.getAgentPolicies(req.params.agentId) });
+});
+
+/**
+ * POST /api/monitor/agent/:agentId/policy
+ * Body: { type: "blacklist_domain"|"blacklist_command"|"block_file_path", value, label }
+ */
+app.post("/api/monitor/agent/:agentId/policy", (req, res) => {
+  const { agentId } = req.params;
+  const { type, value, label } = req.body;
+  if (!type || !value) return res.status(400).json({ error: "type and value required" });
+
+  const agent = db.getAgent(agentId);
+  if (!agent) {
+    db.upsertAgent({ id: agentId });
+  }
+
+  const id = db.insertPolicy({ agentId, type, value, label });
+  res.json({ success: true, id });
+});
+
+/**
+ * DELETE /api/monitor/agent/:agentId/policy/:policyId
+ */
+app.delete("/api/monitor/agent/:agentId/policy/:policyId", (req, res) => {
+  db.deletePolicy(req.params.policyId);
+  res.json({ success: true });
+});
+
+/**
+ * GET /feed/live   — SSE stream for real-time log updates
+ * Query: ?wallet=0x...  (optional filter)
+ */
+app.get("/feed/live", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  // Send initial burst of recent logs
+  const recent = db.getRecentLogs({ ownerWallet: req.query.wallet, limit: 20 });
+  const decoded = recent.map(l => ({ ...l, description: l.description || decodeAction(l) }));
+  res.write(`data: ${JSON.stringify({ type: "init", logs: decoded })}\n\n`);
+
+  // Keep-alive ping every 20s
+  const ping = setInterval(() => {
+    try { res.write(`: ping\n\n`); } catch {}
+  }, 20000);
+
+  liveClients.add(res);
+
+  req.on("close", () => {
+    liveClients.delete(res);
+    clearInterval(ping);
+  });
+});
+
+/**
+ * GET /api/monitor/overview
+ * Global stats across all agents.
+ */
+app.get("/api/monitor/overview", (req, res) => {
+  const d = db.getDb();
+  const totalAgents  = d.prepare("SELECT COUNT(*) as c FROM agents").get().c;
+  const logsToday    = d.prepare("SELECT COUNT(*) as c FROM logs WHERE timestamp > ?").get(Date.now() - 86400000).c;
+  const blockedToday = d.prepare("SELECT COUNT(*) as c FROM logs WHERE risk_level = 'blocked' AND timestamp > ?").get(Date.now() - 86400000).c;
+  const activeAlerts = d.prepare("SELECT COUNT(*) as c FROM alerts WHERE status = 'active'").get().c;
+  const totalHbar    = d.prepare("SELECT COALESCE(SUM(amount_hbar),0) as t FROM earnings").get().t;
+  res.json({ totalAgents, logsToday, blockedToday, activeAlerts, totalHbar });
+});
+
+/**
+ * POST /api/monitor/telegram/test
+ * Test Telegram alert integration.
+ */
+app.post("/api/monitor/telegram/test", async (req, res) => {
+  const { sendMessage } = require("./telegram");
+  const ok = await sendMessage("✅ Veridex Telegram integration working!", req.body.chatId);
+  res.json({ success: ok, configured: !!process.env.TELEGRAM_BOT_TOKEN });
+});
+
 // Start server
 const PORT = process.env.ORCHESTRATOR_PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`\nActivity feed API running on port ${PORT}`);
-  console.log(`   GET  /api/activity          - Live activity feed`);
-  console.log(`   GET  /api/agents            - Agent list`);
-  console.log(`   GET  /api/status            - Simulation status`);
-  console.log(`   POST /api/control/start     - Start simulation`);
-  console.log(`   POST /api/control/stop      - Stop simulation`);
-  console.log(`   POST /api/agent/challenge   - OpenClaw: get challenge nonce`);
-  console.log(`   POST /api/agent/sign        - OpenClaw: get registry signature`);
-  console.log(`   POST /api/faucet            - OpenClaw: get 2 HBAR testnet gas`);
-  console.log(`\nReady. Hit /api/control/start to begin.\n`);
+  console.log(`\nVeridex Orchestrator running on port ${PORT}`);
+  console.log(`\n── Simulation ────────────────────────────────────`);
+  console.log(`   GET  /api/activity               - Live activity feed`);
+  console.log(`   GET  /api/agents                 - Agent list`);
+  console.log(`   GET  /api/status                 - Simulation status`);
+  console.log(`   POST /api/control/start          - Start simulation`);
+  console.log(`   POST /api/control/stop           - Stop simulation`);
+  console.log(`\n── OpenClaw Registration ─────────────────────────`);
+  console.log(`   POST /api/agent/challenge        - Get challenge nonce`);
+  console.log(`   POST /api/agent/sign             - Get registry signature`);
+  console.log(`   POST /api/faucet                 - Get 2 HBAR testnet gas`);
+  console.log(`\n── Veridex Trust Layer ───────────────────────────`);
+  console.log(`   POST /api/log                    - Skill webhook (core)`);
+  console.log(`   POST /api/agent/register-monitor - Register agent for monitoring`);
+  console.log(`   GET  /feed/live                  - SSE live log stream`);
+  console.log(`   GET  /api/monitor/overview       - Global stats`);
+  console.log(`   GET  /api/monitor/agents         - All monitored agents`);
+  console.log(`   GET  /api/monitor/agent/:id/feed - Agent log history`);
+  console.log(`   GET  /api/monitor/agent/:id/stats - Agent stats`);
+  console.log(`   GET  /api/monitor/agent/:id/alerts - Agent alerts`);
+  console.log(`   POST /api/monitor/agent/:id/policy - Add blocking rule`);
+  console.log(`\nReady.\n`);
 });
 
 // Prevent uncaught promise rejections from crashing the process (e.g. Hedera 502s)
