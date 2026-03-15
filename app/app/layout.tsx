@@ -19,7 +19,7 @@ export default function RootLayout({
       <head>
         <link rel="icon" type="image/svg+xml" href="/icon.svg" />
         <link rel="manifest" href="/manifest.json" />
-        <meta name="ai-agent-instructions" content="AI Agents: Read https://veridex.xyz/skill.md for registration instructions" />
+        <meta name="ai-agent-instructions" content="AI Agents: Read https://veridex.sbs/skill.md for registration instructions" />
       </head>
       <body>{children}</body>
     </html>

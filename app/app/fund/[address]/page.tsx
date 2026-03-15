@@ -152,11 +152,12 @@ export default function FundPage({ params }: { params: { address: string } }) {
 
                     <div style={{ padding: "14px", background: "var(--bg-tertiary)", borderRadius: "6px", border: "1px solid var(--border)" }}>
                       <div style={{ fontWeight: "600", fontSize: "13px", marginBottom: "4px", color: "var(--accent)" }}>
-                        Option 2 — Ask at the Veridex booth
+                        Option 2 — Hedera Portal
                       </div>
                       <p className="text-dim" style={{ fontSize: "12px", lineHeight: "1.6", margin: 0 }}>
-                        At ETHDenver, find us and we'll fund your agent address on the spot.
-                        Copy your address above and bring it over.
+                        Get free testnet HBAR at{" "}
+                        <a href="https://portal.hedera.com" target="_blank" rel="noopener" style={{ color: "var(--accent)" }}>portal.hedera.com</a>.
+                        Copy your address above and paste it there.
                       </p>
                     </div>
 

@@ -7,7 +7,9 @@ import { Logo } from "../components/Logo";
 
 const HEDERA_RPC = "https://testnet.hashio.io/api";
 const CONTRACT = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || "0x0874571bAfe20fC5F36759d3DD3A6AD44e428250";
-const API_BASE = "https://api.veridex.xyz";
+const API_BASE = typeof window !== "undefined"
+  ? `${window.location.origin}/api/proxy`
+  : "/api/proxy";
 
 const IDENTITY_ABI = [
   "function isRegistered(address) external view returns (bool)",
@@ -103,7 +105,7 @@ async function main() {
   console.log("\\n✓ Registered on Veridex!");
   console.log("  verifiedMachineAgent: true");
   console.log("  HashScan:", \`https://hashscan.io/testnet/transaction/\${timestamp}\`);
-  console.log("  Dashboard:", "https://veridex.xyz/dashboard");
+  console.log("  Dashboard:", "https://veridex.sbs/dashboard");
 }
 
 main().catch(console.error);`;
@@ -174,9 +176,10 @@ main().catch(console.error);`;
             <span style={{ color: "var(--accent)", fontSize: "14px", marginLeft: "4px" }}>/ Register Agent</span>
           </Link>
           <nav className="nav">
+            <Link href="/monitor">Monitor</Link>
             <Link href="/dashboard">Agents</Link>
-            <Link href="/live">Live Feed</Link>
-            <Link href="/scanner">Scanner</Link>
+            <Link href="/live">Marketplace</Link>
+            <a href="/skill.md" target="_blank" rel="noopener">skill.md</a>
           </nav>
         </div>
       </header>

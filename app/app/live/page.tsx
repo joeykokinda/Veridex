@@ -464,11 +464,10 @@ export default function LiveDashboard() {
         <div className="header-content">
           <Link href="/" className="logo text-mono"><Logo size={20} /></Link>
           <nav className="nav">
+            <Link href="/monitor">Monitor</Link>
             <Link href="/dashboard">Agents</Link>
-            <Link href="/live" style={{ fontWeight: "600", textDecoration: "underline" }}>Live Feed</Link>
-            <Link href="/skill.md">Docs</Link>
-            <span style={{ color: "var(--border)" }}>|</span>
-            <Link href="/scanner" style={{ color: "var(--accent)" }}>Scanner</Link>
+            <Link href="/live" style={{ fontWeight: "600", textDecoration: "underline" }}>Marketplace</Link>
+            <a href="/skill.md" target="_blank" rel="noopener">skill.md</a>
           </nav>
         </div>
       </header>

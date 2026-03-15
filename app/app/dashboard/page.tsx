@@ -193,11 +193,10 @@ export default function DashboardPage() {
         <div className="header-content">
           <Link href="/" className="logo text-mono"><Logo size={20} /></Link>
           <nav className="nav">
+            <Link href="/monitor">Monitor</Link>
             <Link href="/dashboard" style={{ fontWeight: "600", textDecoration: "underline" }}>Agents</Link>
-            <Link href="/live">Live Feed</Link>
-            <Link href="/skill.md">Docs</Link>
-            <span style={{ color: "var(--border)" }}>|</span>
-            <Link href="/scanner" style={{ color: "var(--accent)" }}>Scanner</Link>
+            <Link href="/live">Marketplace</Link>
+            <a href="/skill.md" target="_blank" rel="noopener">skill.md</a>
           </nav>
         </div>
       </header>
@@ -403,7 +402,7 @@ export default function DashboardPage() {
                 <p className="text-dim" style={{ fontSize: "12px", marginTop: "6px" }}>
                   Point your agent at{" "}
                   <a href="/skill.md" target="_blank" rel="noopener" style={{ color: "var(--accent)" }}>
-                    veridex.xyz/skill.md
+                    veridex.sbs/skill.md
                   </a>{" "}
                   to register and appear here.
                 </p>
