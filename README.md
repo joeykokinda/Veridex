@@ -110,8 +110,6 @@ Blocked actions are logged to HCS with proof. Telegram alert fires immediately.
 Denver2026/
 ├── orchestrator/
 │   ├── index.js              # Express API server — all endpoints
-│   ├── agent-orchestrator.js # Tick loop, LLM decisions, marketplace simulation
-│   ├── tool-gateway.js       # Safe contract wrapper (idempotency, rate limiting)
 │   ├── veridex-db.js         # SQLite layer (agents, logs, alerts, policies, earnings)
 │   ├── blocking.js           # Risk assessment + blocking rules + quarantine check
 │   ├── hcs-logger.js         # Hedera HCS topic creation + message submission
@@ -124,18 +122,15 @@ Denver2026/
 │   └── rogue-bot.js          # Demo: compromised agent (blocked attacks every 3 min — WOW)
 ├── app/
 │   ├── app/
-│   │   ├── page.tsx                    # Landing page — live feed demo, install snippet
-│   │   ├── dashboard/page.tsx          # Wallet-gated agent list (MetaMask)
-│   │   ├── dashboard/add/page.tsx      # 3-step wizard: register new agent
+│   │   ├── page.tsx                     # Landing page — live feed demo, install snippet
+│   │   ├── dashboard/page.tsx           # Wallet-gated agent list (MetaMask)
+│   │   ├── dashboard/add/page.tsx       # 3-step wizard: register new agent
 │   │   ├── dashboard/[agentId]/page.tsx # 5 tabs: Activity, Jobs, Earnings, Policies, Recovery
-│   │   ├── leaderboard/page.tsx        # ERC-8004 rep scores from chain
-│   │   ├── monitor/page.tsx            # (legacy) live action feed
-│   │   └── monitor/[agentId]/page.tsx  # (legacy) agent detail
-│   ├── middleware.ts                   # Next.js proxy → backend port 3001
+│   │   └── leaderboard/page.tsx         # ERC-8004 rep scores from chain
+│   ├── middleware.ts                    # Next.js proxy → backend port 3001
 │   └── public/
-│       └── skill.md                    # OpenClaw skill spec (POST /api/log hooks)
+│       └── skill.md                     # OpenClaw skill spec (POST /api/log hooks)
 ├── contracts/                # Solidity contracts (deployed on Hedera testnet)
-├── agents/personalities/     # Agent personality files (albert, eli, gt, joey)
 └── scripts/                  # Deployment and interaction scripts
 ```
 
