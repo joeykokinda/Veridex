@@ -30,13 +30,13 @@ let running = false;
 
 // ─── Telegram API helpers ────────────────────────────────────────────────────
 
-async function tgPost(method, body) {
+async function tgPost(method, body, timeoutMs = 10000) {
   try {
     const r = await fetch(`${API}/${method}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     return await r.json();
   } catch (e) {
@@ -328,7 +328,7 @@ async function poll() {
       offset,
       timeout: 30,
       allowed_updates: ["message"],
-    });
+    }, 40000); // 40s — must exceed the 30s long-poll timeout
 
     if (!result?.ok || !result.result?.length) return;
 
