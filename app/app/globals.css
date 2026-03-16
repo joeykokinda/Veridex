@@ -11,9 +11,9 @@
   --text-secondary: #a1a1aa;
   --text-tertiary: #71717a;
   
-  --accent: #ffffff;
-  --accent-hover: #e4e4e7;
-  --accent-dim: rgba(255, 255, 255, 0.1);
+  --accent: #10b981;
+  --accent-hover: #059669;
+  --accent-dim: rgba(16, 185, 129, 0.1);
   
   --border: #27272a;
   --border-hover: #3f3f46;

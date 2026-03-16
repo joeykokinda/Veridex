@@ -92,6 +92,53 @@ function initSchema() {
   try { db.exec("ALTER TABLE agents ADD COLUMN config TEXT"); } catch {}
 }
 
+function ensureJobsTable() {
+  const d = getDb();
+  d.exec(`
+    CREATE TABLE IF NOT EXISTS jobs (
+      job_id      TEXT PRIMARY KEY,
+      status      TEXT NOT NULL,
+      client      TEXT,
+      agent       TEXT,
+      budget      TEXT,
+      amount      TEXT,
+      description TEXT,
+      block_number INTEGER,
+      tx_hash     TEXT,
+      posted_at   INTEGER,
+      accepted_at INTEGER,
+      completed_at INTEGER,
+      updated_at  INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    );
+    CREATE INDEX IF NOT EXISTS idx_jobs_agent  ON jobs(agent);
+    CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+
+    CREATE TABLE IF NOT EXISTS vault_secrets (
+      id             TEXT PRIMARY KEY,
+      owner_agent_id TEXT NOT NULL,
+      secret_type    TEXT NOT NULL,
+      label          TEXT,
+      ciphertext     TEXT NOT NULL,
+      iv             TEXT NOT NULL,
+      tag            TEXT NOT NULL,
+      allowed_agents TEXT,
+      created_at     INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    );
+    CREATE INDEX IF NOT EXISTS idx_vault_owner ON vault_secrets(owner_agent_id);
+
+    CREATE TABLE IF NOT EXISTS vault_grants (
+      id          TEXT PRIMARY KEY,
+      agent_id    TEXT NOT NULL,
+      secret_type TEXT NOT NULL,
+      endpoint    TEXT,
+      granted     INTEGER NOT NULL DEFAULT 1,
+      expires_at  INTEGER,
+      timestamp   INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    );
+    CREATE INDEX IF NOT EXISTS idx_vault_grants_agent ON vault_grants(agent_id);
+  `);
+}
+
 // ── Agents ────────────────────────────────────────────────────────────────────
 
 function upsertAgent({ id, ownerWallet, hederaAccountId, hcsTopicId, name }) {
@@ -286,10 +333,103 @@ function setAgentSplitConfig(agentId, { splitDev, splitOps, splitReinvest }) {
   getDb().prepare("UPDATE agents SET config = ? WHERE id = ?").run(next, agentId);
 }
 
+// ── Jobs ──────────────────────────────────────────────────────────────────────
+
+function upsertJob({ jobId, status, client, agent, budget, amount, description, blockNumber, txHash, postedAt, acceptedAt, completedAt, updatedAt }) {
+  const d = getDb();
+  const existing = d.prepare("SELECT job_id FROM jobs WHERE job_id = ?").get(jobId);
+  if (existing) {
+    d.prepare(`
+      UPDATE jobs SET
+        status       = COALESCE(?, status),
+        client       = COALESCE(?, client),
+        agent        = COALESCE(?, agent),
+        budget       = COALESCE(?, budget),
+        amount       = COALESCE(?, amount),
+        description  = COALESCE(?, description),
+        block_number = COALESCE(?, block_number),
+        tx_hash      = COALESCE(?, tx_hash),
+        posted_at    = COALESCE(?, posted_at),
+        accepted_at  = COALESCE(?, accepted_at),
+        completed_at = COALESCE(?, completed_at),
+        updated_at   = ?
+      WHERE job_id = ?
+    `).run(status||null, client||null, agent||null, budget||null, amount||null, description||null, blockNumber||null, txHash||null, postedAt||null, acceptedAt||null, completedAt||null, updatedAt||Date.now(), jobId);
+  } else {
+    d.prepare(`
+      INSERT INTO jobs (job_id, status, client, agent, budget, amount, description, block_number, tx_hash, posted_at, accepted_at, completed_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(jobId, status||"Open", client||null, agent||null, budget||null, amount||null, description||null, blockNumber||null, txHash||null, postedAt||null, acceptedAt||null, completedAt||null, updatedAt||Date.now());
+  }
+}
+
+function getJob(jobId)             { return getDb().prepare("SELECT * FROM jobs WHERE job_id = ?").get(jobId); }
+function getJobsByStatus(status)   { return getDb().prepare("SELECT * FROM jobs WHERE status = ? ORDER BY updated_at DESC").all(status); }
+function getJobsByAgent(agent)     { return getDb().prepare("SELECT * FROM jobs WHERE agent = ? ORDER BY updated_at DESC").all(agent); }
+function getRecentJobs(limit = 50) { return getDb().prepare("SELECT * FROM jobs ORDER BY updated_at DESC LIMIT ?").all(limit); }
+
+// ── Vault ─────────────────────────────────────────────────────────────────────
+
+function insertVaultSecret({ ownerAgentId, secretType, label, ciphertext, iv, tag, allowedAgentIds }) {
+  const id = randomUUID();
+  getDb().prepare(`
+    INSERT INTO vault_secrets (id, owner_agent_id, secret_type, label, ciphertext, iv, tag, allowed_agents)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, ownerAgentId, secretType, label||null, ciphertext, iv, tag, JSON.stringify(allowedAgentIds||[]));
+  return id;
+}
+
+function getVaultSecret(id)       { return getDb().prepare("SELECT * FROM vault_secrets WHERE id = ?").get(id); }
+function deleteVaultSecret(id)    { return getDb().prepare("DELETE FROM vault_secrets WHERE id = ?").run(id); }
+
+function getVaultSecrets(agentId) {
+  const d = getDb();
+  const own = d.prepare("SELECT * FROM vault_secrets WHERE owner_agent_id = ? ORDER BY created_at DESC").all(agentId);
+  // Also return secrets where this agent is in allowed_agents
+  const all = d.prepare("SELECT * FROM vault_secrets ORDER BY created_at DESC").all();
+  const allowed = all.filter(s => {
+    if (s.owner_agent_id === agentId) return false; // already in own
+    try { return JSON.parse(s.allowed_agents || "[]").includes(agentId); } catch { return false; }
+  });
+  return [...own, ...allowed];
+}
+
+function findVaultSecret(agentId, secretType) {
+  const d = getDb();
+  // Check owned first
+  const owned = d.prepare("SELECT * FROM vault_secrets WHERE owner_agent_id = ? AND secret_type = ? LIMIT 1").get(agentId, secretType);
+  if (owned) return owned;
+  // Check allowed
+  const all = d.prepare("SELECT * FROM vault_secrets WHERE secret_type = ?").all(secretType);
+  return all.find(s => {
+    try { return JSON.parse(s.allowed_agents || "[]").includes(agentId); } catch { return false; }
+  }) || null;
+}
+
+function insertVaultGrant({ agentId, secretType, endpoint, granted, expiresAt }) {
+  const id = randomUUID();
+  getDb().prepare(`
+    INSERT INTO vault_grants (id, agent_id, secret_type, endpoint, granted, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, agentId, secretType, endpoint||null, granted ? 1 : 0, expiresAt||null);
+  return id;
+}
+
+function getVaultGrants(agentId) {
+  return getDb().prepare("SELECT * FROM vault_grants WHERE agent_id = ? ORDER BY timestamp DESC LIMIT 100").all(agentId);
+}
+
+// ── Agent lookup by wallet ─────────────────────────────────────────────────────
+
+function findAgentByWallet(walletAddress) {
+  if (!walletAddress) return null;
+  return getDb().prepare("SELECT * FROM agents WHERE LOWER(owner_wallet) = LOWER(?) LIMIT 1").get(walletAddress);
+}
+
 module.exports = {
   getDb,
   // agents
-  upsertAgent, getAgent, getAgentsByOwner, getAllAgents,
+  upsertAgent, getAgent, getAgentsByOwner, getAllAgents, findAgentByWallet,
   // logs
   insertLog, getAgentLogs, getRecentLogs, getAgentStats,
   // alerts
@@ -299,5 +439,10 @@ module.exports = {
   // earnings
   insertEarning, getAgentEarnings,
   // split config
-  getAgentSplitConfig, setAgentSplitConfig
+  getAgentSplitConfig, setAgentSplitConfig,
+  // jobs
+  ensureJobsTable, upsertJob, getJob, getJobsByStatus, getJobsByAgent, getRecentJobs,
+  // vault
+  insertVaultSecret, getVaultSecret, deleteVaultSecret, getVaultSecrets, findVaultSecret,
+  insertVaultGrant, getVaultGrants,
 };

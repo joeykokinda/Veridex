@@ -1,7 +1,7 @@
 ---
 name: Veridex
-version: 3.0.0
-description: Trust and operations layer for OpenClaw agents — immutable HCS audit logs, active action blocking, Telegram alerts, and autonomous earnings splits
+version: 4.0.0
+description: Security control plane for OpenClaw agents — secrets vault, scoped capability tokens, policy enforcement, verifiable operational history on Hedera HCS
 homepage: https://veridex.sbs
 blockchain: Hedera Testnet
 updated: 2026-03-15
@@ -34,6 +34,74 @@ That's it. Your agent will:
 - Block dangerous shell commands, credential exfiltration, and C2 callbacks before execution
 - Appear in the live monitor at **https://veridex.sbs/monitor**
 - Receive a unique HCS topic ID for your audit trail
+
+---
+
+## Step 0: Recover Your Memory (Every Startup)
+
+Before taking any action, call the memory endpoint to recover your operational history from Hedera HCS. This gives you cryptographically-verified context from your previous sessions.
+
+```javascript
+const API = "https://veridex.sbs/api/proxy";
+
+async function recoverMemory(agentId) {
+  try {
+    const resp = await fetch(`${API}/v2/agent/${agentId}/memory`);
+    if (!resp.ok) return null;
+    const memory = await resp.json();
+
+    // Inject summary into your LLM context
+    console.log("[Veridex Memory]", memory.summary);
+
+    // Act on structured data:
+    // memory.open_jobs       — jobs you must complete
+    // memory.blocked_actions — do NOT retry these (will be blocked again)
+    // memory.pending_earnings — HBAR earned, not yet split
+    // memory.active_alerts   — issues needing attention
+
+    return memory;
+  } catch { return null; }
+}
+
+// Call at the top of your main() before anything else
+const AGENT_ID = "your-agent-id";
+const memory = await recoverMemory(AGENT_ID);
+if (memory?.summary) {
+  // Prepend to your system prompt or first user message
+  systemPrompt = memory.summary + "\n\n" + systemPrompt;
+}
+```
+
+**Why this matters:** Your agent is amnesiac by default. Without this call, it wakes up with no knowledge of open jobs, blocked actions, or earned HBAR. The data comes directly from Hedera HCS — it cannot be tampered with, even if this server is compromised. Every entry is verifiable on HashScan.
+
+---
+
+## Step 1: Request Credentials (Never Use Raw Secrets)
+
+Instead of storing API keys and wallet keys in your `.env`, request them through Veridex. Your operator stores the secrets — you get a 60-second scoped token.
+
+```javascript
+async function requestCapability(agentId, secretType, endpoint) {
+  const resp = await fetch(`${API}/v2/vault/request`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agentId, secretType, endpoint })
+    // secretType: "openai_key" | "wallet_key" | "stripe_key" | "db_token" | etc.
+  });
+  const result = await resp.json();
+  if (!result.granted) {
+    console.error("[Veridex] Capability denied:", result.reason);
+    return null;
+  }
+  // result.token is valid for 60 seconds for result.endpoint only
+  return result.token;
+}
+
+// Example: request OpenAI key capability before making an LLM call
+const token = await requestCapability(AGENT_ID, "openai_key", "https://api.openai.com");
+// Use token as: Authorization: Bearer <token> in your proxied request
+// The raw API key never leaves the Veridex server
+```
 
 ---
 

@@ -18,6 +18,8 @@ const { checkBlocking, assessRisk, decodeAction } = require("./blocking");
 const { getAgentSplitConfig, setAgentSplitConfig } = db;
 const { createAgentTopic, writeToHCS, topicHashScanUrl } = require("./hcs-logger");
 const { sendAlert } = require("./telegram");
+const vault = require("./vault");
+const { startJobMonitor, getRecentJobs, getAgentJobs } = require("./job-monitor");
 
 // SSE clients for live feed
 const liveClients = new Set();
@@ -565,6 +567,23 @@ app.post("/api/log", async (req, res) => {
     }).catch(() => {});
   }
 
+  // Auto-record earnings when trading bot (or any agent) logs an earnings_split
+  if (action === "earnings_split" && phase === "after" && params?.amount) {
+    const amountHbar = parseFloat(params.amount);
+    if (amountHbar > 0) {
+      const splitCfg = db.getAgentSplitConfig(agentId);
+      db.insertEarning({
+        agentId,
+        amountHbar,
+        source:        params.source || "agent_earnings",
+        splitDev:      parseFloat(params.splitDev)      || (amountHbar * splitCfg.splitDev / 100),
+        splitOps:      parseFloat(params.splitOps)      || (amountHbar * splitCfg.splitOps / 100),
+        splitReinvest: parseFloat(params.splitReinvest) || (amountHbar * splitCfg.splitReinvest / 100),
+        hcsPaystubSequence: null, // will be updated when HCS write completes
+      });
+    }
+  }
+
   // Alert on high risk
   if (risk === "high") {
     db.insertAlert({
@@ -865,9 +884,260 @@ app.post("/api/monitor/telegram/test", async (req, res) => {
   res.json({ success: ok, configured: !!process.env.TELEGRAM_BOT_TOKEN });
 });
 
+// ── Layer 1: Secrets Vault ────────────────────────────────────────────────────
+
+/**
+ * POST /v2/vault/store
+ * Body: { agentId, secretType, label, value, allowedAgentIds? }
+ * Stores an encrypted secret. Raw value never persisted in plaintext.
+ */
+app.post("/v2/vault/store", (req, res) => {
+  const { agentId, secretType, label, value, allowedAgentIds } = req.body;
+  if (!agentId || !secretType || !value) {
+    return res.status(400).json({ error: "agentId, secretType, and value required" });
+  }
+  try {
+    const result = vault.storeSecret({ ownerAgentId: agentId, secretType, label, value, allowedAgentIds });
+    res.json({ success: true, secretId: result.secretId, secretType, label: label || secretType });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * GET /v2/vault/list/:agentId
+ * Returns secret metadata for an agent (never values).
+ */
+app.get("/v2/vault/list/:agentId", (req, res) => {
+  const secrets = vault.listSecrets(req.params.agentId);
+  const grants  = vault.getGrants(req.params.agentId);
+  res.json({ secrets, recentGrants: grants.slice(0, 20) });
+});
+
+/**
+ * DELETE /v2/vault/secret/:secretId
+ * Body: { agentId }
+ */
+app.delete("/v2/vault/secret/:secretId", (req, res) => {
+  const { agentId } = req.body;
+  if (!agentId) return res.status(400).json({ error: "agentId required" });
+  const result = vault.deleteSecret(req.params.secretId, agentId);
+  if (!result.ok) return res.status(403).json({ error: result.reason });
+  res.json({ success: true });
+});
+
+/**
+ * POST /v2/vault/request
+ * Body: { agentId, secretType, endpoint? }
+ * Issues a 60s scoped capability token. Logs grant/denial to HCS.
+ */
+app.post("/v2/vault/request", async (req, res) => {
+  const { agentId, secretType, endpoint } = req.body;
+  if (!agentId || !secretType) {
+    return res.status(400).json({ error: "agentId and secretType required" });
+  }
+
+  const result = vault.requestCapability({ requestingAgentId: agentId, secretType, endpoint });
+
+  // Log grant/denial to HCS
+  const agentRecord = db.getAgent(agentId);
+  if (agentRecord?.hcs_topic_id) {
+    writeToHCS(agentRecord.hcs_topic_id, {
+      event:      result.granted ? "capability_granted" : "capability_denied",
+      agentId, secretType, endpoint: endpoint || "*",
+      reason:     result.reason || null,
+      expiresAt:  result.expiresAt || null,
+      timestamp:  Date.now(),
+    }).catch(() => {});
+  }
+
+  if (!result.granted) {
+    // Alert on denial
+    sendAlert({
+      agentId, agentName: agentRecord?.name || agentId,
+      triggerType: "capability_denied",
+      description: `Capability denied: ${secretType} — ${result.reason}`,
+      topicId: agentRecord?.hcs_topic_id,
+    }).catch(() => {});
+    return res.status(403).json({ granted: false, reason: result.reason });
+  }
+
+  res.json(result);
+});
+
+// ── Layer 4: ERC-8183 Job Monitor ─────────────────────────────────────────────
+
+/**
+ * GET /v2/jobs
+ * All recent jobs across all agents.
+ */
+app.get("/v2/jobs", (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit || "50"), 200);
+  res.json({ jobs: getRecentJobs(limit) });
+});
+
+/**
+ * GET /v2/jobs/agent/:agentAddress
+ * Jobs for a specific agent wallet address.
+ */
+app.get("/v2/jobs/agent/:agentAddress", (req, res) => {
+  res.json({ jobs: getAgentJobs(req.params.agentAddress) });
+});
+
+// ── Layer 8: Verifiable Operational History (Tamper-Proof Agent Memory) ───────
+
+/**
+ * GET /v2/agent/:agentId/memory
+ * Reads last 50 HCS messages from Mirror Node + local DB state.
+ * Returns structured context the agent should inject at startup.
+ *
+ * This is NOT generic "agent memory" (LangChain/Mem0 solved that).
+ * This is VERIFIABLE OPERATIONAL HISTORY — cryptographically provable,
+ * tamper-proof, independent of any server. Other agents can verify it too.
+ */
+app.get("/v2/agent/:agentId/memory", async (req, res) => {
+  const { agentId } = req.params;
+  const agentRecord = db.getAgent(agentId);
+
+  if (!agentRecord) {
+    return res.status(404).json({ error: "Agent not found. Register via POST /api/agent/register-monitor first." });
+  }
+
+  // ── Pull HCS history from Mirror Node ─────────────────────────────────────
+  let hcsMessages = [];
+  if (agentRecord.hcs_topic_id) {
+    try {
+      const mirrorUrl = `https://testnet.mirrornode.hedera.com/api/v1/topics/${agentRecord.hcs_topic_id}/messages?limit=50&order=desc`;
+      const resp = await fetch(mirrorUrl, { signal: AbortSignal.timeout(8000) });
+      if (resp.ok) {
+        const data = await resp.json();
+        hcsMessages = (data.messages || []).map(m => {
+          try {
+            const decoded = Buffer.from(m.message, "base64").toString("utf8");
+            const parsed  = JSON.parse(decoded);
+            return {
+              sequenceNumber: m.sequence_number,
+              consensusTimestamp: m.consensus_timestamp,
+              hashScanUrl: `https://hashscan.io/testnet/topic/${agentRecord.hcs_topic_id}`,
+              ...parsed,
+            };
+          } catch {
+            return { sequenceNumber: m.sequence_number, raw: m.message };
+          }
+        });
+      }
+    } catch (e) {
+      console.warn("[Memory] Mirror Node fetch failed:", e.message);
+    }
+  }
+
+  // ── Structure HCS messages into categories ─────────────────────────────────
+  const blockedActions = [];
+  const recentCompletions = [];
+  const earningEvents = [];
+  const capabilityEvents = [];
+
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+  for (const msg of hcsMessages) {
+    const ts = msg.timestamp || 0;
+    if (ts < sevenDaysAgo && ts > 0) continue; // ignore entries older than 7 days
+
+    if (msg.result === "blocked" || msg.riskLevel === "blocked") {
+      blockedActions.push({
+        tool:          msg.tool || msg.action,
+        blockReason:   msg.blockReason,
+        timestamp:     ts,
+        sequenceNumber: msg.sequenceNumber,
+        hashScanUrl:   msg.hashScanUrl,
+      });
+    } else if (msg.event === "job_completed") {
+      recentCompletions.push({
+        jobId:      msg.jobId,
+        amountHbar: msg.amountHbar,
+        timestamp:  ts,
+        sequenceNumber: msg.sequenceNumber,
+        hashScanUrl: msg.hashScanUrl,
+      });
+    } else if (msg.event === "capability_granted" || msg.event === "capability_denied") {
+      capabilityEvents.push({
+        event:      msg.event,
+        secretType: msg.secretType,
+        timestamp:  ts,
+      });
+    } else if (msg.action === "earnings_split" || msg.event === "earnings_split") {
+      earningEvents.push({
+        amount:    msg.params?.amount || msg.amountHbar,
+        timestamp: ts,
+      });
+    }
+  }
+
+  // ── Pull current state from local DB ───────────────────────────────────────
+  const stats         = db.getAgentStats(agentId);
+  const openJobs      = db.getJobsByAgent(agentRecord.owner_wallet || "").filter(j => ["Open","Funded","Submitted","Bidding"].includes(j.status));
+  const recentEarnings = db.getAgentEarnings(agentId).slice(0, 5);
+  const activeAlerts  = db.getAgentAlerts(agentId, { status: "active", limit: 5 });
+
+  const pendingEarnings = recentEarnings
+    .filter(e => Date.now() - e.timestamp < 24 * 60 * 60 * 1000)
+    .reduce((sum, e) => sum + (e.amount_hbar || 0), 0);
+
+  // ── Build human-readable summary (inject into LLM context) ────────────────
+  const lines = [`You are agent ${agentId}. Here is your verified operational history from Hedera HCS:`];
+
+  if (openJobs.length > 0) {
+    lines.push(`\nOPEN JOBS (${openJobs.length}):`);
+    openJobs.forEach(j => lines.push(`  - Job #${j.job_id} [${j.status}] — ${j.budget || "?"} HBAR escrow`));
+  }
+
+  if (blockedActions.length > 0) {
+    lines.push(`\nBLOCKED ACTIONS — do NOT retry these:`);
+    blockedActions.slice(0, 5).forEach(b => lines.push(`  - ${b.tool || "unknown"}: ${b.blockReason || "policy violation"}`));
+  }
+
+  if (recentCompletions.length > 0) {
+    lines.push(`\nRECENT COMPLETIONS (${recentCompletions.length}):`);
+    recentCompletions.slice(0, 3).forEach(c => lines.push(`  - Job #${c.jobId}: ${c.amountHbar} HBAR earned`));
+  }
+
+  if (pendingEarnings > 0) {
+    lines.push(`\nPENDING EARNINGS: ${pendingEarnings.toFixed(4)} HBAR (last 24h, not yet split)`);
+  }
+
+  lines.push(`\nLIFETIME STATS: ${stats.totalActions} actions · ${stats.blockedActions} blocked · ${stats.totalEarned?.toFixed(4) || 0} HBAR total earned`);
+
+  if (activeAlerts.length > 0) {
+    lines.push(`\nACTIVE ALERTS: ${activeAlerts.length} unresolved — check /monitor/${agentId}`);
+  }
+
+  if (agentRecord.hcs_topic_id) {
+    lines.push(`\nAUDIT TRAIL: https://hashscan.io/testnet/topic/${agentRecord.hcs_topic_id}`);
+    lines.push(`(Every entry above is cryptographically verifiable on Hedera — this history cannot be tampered with)`);
+  }
+
+  res.json({
+    agentId,
+    hcsTopicId:       agentRecord.hcs_topic_id || null,
+    hashScanUrl:      agentRecord.hcs_topic_id ? topicHashScanUrl(agentRecord.hcs_topic_id) : null,
+    open_jobs:        openJobs,
+    blocked_actions:  blockedActions,
+    recent_completions: recentCompletions,
+    capability_events:  capabilityEvents,
+    pending_earnings: parseFloat(pendingEarnings.toFixed(4)),
+    lifetime_stats:   stats,
+    active_alerts:    activeAlerts,
+    hcs_message_count: hcsMessages.length,
+    summary:          lines.join("\n"),
+    note:             "Inject `summary` into your LLM context at startup. This history is immutable on Hedera HCS.",
+  });
+});
+
 // Start server
 const PORT = process.env.ORCHESTRATOR_PORT || 3001;
 app.listen(PORT, () => {
+  // Start ERC-8183 job monitor in background
+  startJobMonitor(broadcastLiveEvent).catch(e => console.error("[JobMonitor] Start error:", e.message));
   console.log(`\nVeridex Orchestrator running on port ${PORT}`);
   console.log(`\n── Simulation ────────────────────────────────────`);
   console.log(`   GET  /api/activity               - Live activity feed`);
@@ -889,6 +1159,16 @@ app.listen(PORT, () => {
   console.log(`   GET  /api/monitor/agent/:id/stats - Agent stats`);
   console.log(`   GET  /api/monitor/agent/:id/alerts - Agent alerts`);
   console.log(`   POST /api/monitor/agent/:id/policy - Add blocking rule`);
+  console.log(`\n── Secrets Vault (Layer 1) ───────────────────────`);
+  console.log(`   POST /v2/vault/store             - Store encrypted secret`);
+  console.log(`   GET  /v2/vault/list/:agentId     - List secrets (metadata only)`);
+  console.log(`   POST /v2/vault/request           - Request 60s capability token`);
+  console.log(`   DELETE /v2/vault/secret/:id      - Delete secret`);
+  console.log(`\n── Job Monitor (Layer 4) ─────────────────────────`);
+  console.log(`   GET  /v2/jobs                    - All recent ERC-8183 jobs`);
+  console.log(`   GET  /v2/jobs/agent/:address     - Jobs for agent wallet`);
+  console.log(`\n── Verifiable Memory (Layer 8) ───────────────────`);
+  console.log(`   GET  /v2/agent/:id/memory        - Tamper-proof startup context from HCS`);
   console.log(`\nReady.\n`);
 });
 

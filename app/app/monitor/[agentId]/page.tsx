@@ -81,6 +81,38 @@ interface AgentStats {
   hashScanUrl?: string;
 }
 
+interface VaultSecret {
+  secretId: string;
+  secretType: string;
+  label: string;
+  ownerAgentId: string;
+  createdAt: number;
+}
+
+interface VaultGrant {
+  id: string;
+  agent_id: string;
+  secret_type: string;
+  endpoint: string;
+  granted: number;
+  expires_at: number;
+  timestamp: number;
+}
+
+interface AgentMemory {
+  agentId: string;
+  hcsTopicId?: string;
+  hashScanUrl?: string;
+  open_jobs: { job_id: string; status: string; budget?: string }[];
+  blocked_actions: { tool: string; blockReason?: string; timestamp: number; sequenceNumber?: number; hashScanUrl?: string }[];
+  recent_completions: { jobId: string; amountHbar: number; timestamp: number; sequenceNumber?: number }[];
+  pending_earnings: number;
+  lifetime_stats: { totalActions: number; blockedActions: number; totalEarned: number };
+  active_alerts: Alert[];
+  hcs_message_count: number;
+  summary: string;
+}
+
 const RISK_COLOR: Record<string, string> = {
   low: "#10b981", medium: "#f59e0b", high: "#ef4444", blocked: "#dc2626",
 };
@@ -122,13 +154,20 @@ const POLICY_TYPES = [
 
 export default function AgentDetailPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params);
-  const [tab,      setTab]      = useState<"activity" | "earnings" | "policies" | "alerts">("activity");
+  const [tab,      setTab]      = useState<"activity" | "earnings" | "policies" | "alerts" | "memory" | "vault">("activity");
   const [stats,    setStats]    = useState<AgentStats | null>(null);
   const [logs,     setLogs]     = useState<Log[]>([]);
   const [alerts,   setAlerts]   = useState<Alert[]>([]);
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [chainRep, setChainRep] = useState<ChainRep | null>(null);
+  const [memory,   setMemory]   = useState<AgentMemory | null>(null);
+  const [memoryLoading, setMemoryLoading] = useState(false);
+  const [vaultSecrets, setVaultSecrets] = useState<VaultSecret[]>([]);
+  const [vaultGrants,  setVaultGrants]  = useState<VaultGrant[]>([]);
+  const [newSecret, setNewSecret] = useState({ secretType: "openai_key", label: "", value: "" });
+  const [secretSaving, setSecretSaving] = useState(false);
+  const [tokenResult, setTokenResult] = useState<{ token?: string; granted?: boolean; reason?: string; expiresAt?: number } | null>(null);
 
   // New policy form
   const [newPolicy, setNewPolicy] = useState({ type: "blacklist_domain", value: "", label: "" });
@@ -185,13 +224,35 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     } catch {}
   }, [agentId]);
 
+  const fetchVault = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/proxy/v2/vault/list/${agentId}`);
+      if (r.ok) { const d = await r.json(); setVaultSecrets(d.secrets || []); setVaultGrants(d.recentGrants || []); }
+    } catch {}
+  }, [agentId]);
+
+  const fetchMemory = useCallback(async () => {
+    setMemoryLoading(true);
+    try {
+      const r = await fetch(`/api/proxy/v2/agent/${agentId}/memory`);
+      if (r.ok) setMemory(await r.json());
+    } catch {}
+    setMemoryLoading(false);
+  }, [agentId]);
+
   useEffect(() => {
     fetchAll();
     fetchChainRep();
     const iv1 = setInterval(fetchAll, 5000);
-    const iv2 = setInterval(fetchChainRep, 30000); // chain reads less frequently
+    const iv2 = setInterval(fetchChainRep, 30000);
     return () => { clearInterval(iv1); clearInterval(iv2); };
   }, [fetchAll, fetchChainRep]);
+
+  // Lazy-load memory + vault when those tabs are opened
+  useEffect(() => {
+    if (tab === "memory") fetchMemory();
+    if (tab === "vault")  fetchVault();
+  }, [tab, fetchMemory, fetchVault]);
 
   async function addPolicy() {
     if (!newPolicy.value.trim()) return;
@@ -229,6 +290,44 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       setTimeout(() => setSplitSaved(false), 2000);
     } catch {}
     setSplitSaving(false);
+  }
+
+  async function storeSecret() {
+    if (!newSecret.value.trim() || !newSecret.secretType) return;
+    setSecretSaving(true);
+    try {
+      await fetch(`/api/proxy/v2/vault/store`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId, secretType: newSecret.secretType, label: newSecret.label || newSecret.secretType, value: newSecret.value }),
+      });
+      setNewSecret(s => ({ ...s, value: "", label: "" }));
+      await fetchVault();
+    } catch {}
+    setSecretSaving(false);
+  }
+
+  async function deleteSecret(secretId: string) {
+    try {
+      await fetch(`/api/proxy/v2/vault/secret/${secretId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId }),
+      });
+      await fetchVault();
+    } catch {}
+  }
+
+  async function requestToken(secretType: string) {
+    try {
+      const r = await fetch(`/api/proxy/v2/vault/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId, secretType }),
+      });
+      setTokenResult(await r.json());
+      setTimeout(() => setTokenResult(null), 65000); // clear after 65s (token expired)
+    } catch {}
   }
 
   async function resolveAlert(alertId: string) {
@@ -329,7 +428,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: "0", borderBottom: "1px solid var(--border)", marginBottom: "24px" }}>
-          {(["activity", "earnings", "policies", "alerts"] as const).map(t => (
+          {(["activity", "earnings", "policies", "alerts", "memory", "vault"] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -649,6 +748,198 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
             )}
           </div>
         )}
+        {/* Tab: Memory */}
+        {tab === "memory" && (
+          <div>
+            <div style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: "8px", padding: "16px 20px", marginBottom: "20px" }}>
+              <div style={{ fontSize: "13px", fontWeight: "600", color: "#10b981", marginBottom: "4px" }}>Verifiable Operational History</div>
+              <div style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
+                This data comes directly from Hedera HCS — it is cryptographically immutable. Even if this server is compromised, the history cannot be altered.
+                Every entry is verifiable on HashScan independently.
+              </div>
+              {agent?.hcs_topic_id && (
+                <a href={`https://hashscan.io/testnet/topic/${agent.hcs_topic_id}`} target="_blank" rel="noopener"
+                  style={{ fontSize: "11px", color: "#10b981", fontFamily: "monospace", marginTop: "8px", display: "inline-block" }}>
+                  Verify on HashScan ↗
+                </a>
+              )}
+            </div>
+
+            {memoryLoading ? (
+              <div style={{ padding: "40px", textAlign: "center", color: "var(--text-tertiary)", fontSize: "13px" }}>Reading from Hedera Mirror Node...</div>
+            ) : !memory ? (
+              <div style={{ padding: "40px", textAlign: "center", color: "var(--text-tertiary)", fontSize: "13px" }}>No memory data. Agent must have an HCS topic.</div>
+            ) : (
+              <>
+                {/* Stats row */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "20px" }}>
+                  {[
+                    { label: "HCS Messages", value: memory.hcs_message_count, color: "#10b981" },
+                    { label: "Open Jobs",     value: memory.open_jobs.length,   color: "#f59e0b" },
+                    { label: "Blocked (7d)",  value: memory.blocked_actions.length, color: "#ef4444" },
+                    { label: "Pending HBAR",  value: `${memory.pending_earnings.toFixed(4)} ℏ`, color: "#f59e0b" },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "16px", textAlign: "center" }}>
+                      <div style={{ fontSize: "22px", fontWeight: "700", fontFamily: "monospace", color }}>{value}</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "2px" }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* LLM Context panel */}
+                <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", marginBottom: "20px", overflow: "hidden" }}>
+                  <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "12px", color: "var(--text-tertiary)", fontFamily: "monospace" }}>Startup context injected into agent LLM</span>
+                    <span style={{ fontSize: "10px", color: "#10b981", fontFamily: "monospace" }}>GET /v2/agent/{agentId}/memory → .summary</span>
+                  </div>
+                  <pre style={{ margin: 0, padding: "16px 20px", fontSize: "12px", color: "var(--text-secondary)", whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "monospace", lineHeight: "1.6" }}>
+                    {memory.summary}
+                  </pre>
+                </div>
+
+                {/* Blocked actions */}
+                {memory.blocked_actions.length > 0 && (
+                  <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", marginBottom: "16px", overflow: "hidden" }}>
+                    <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--border)" }}>
+                      <span style={{ fontSize: "12px", color: "#ef4444", fontFamily: "monospace" }}>Blocked actions on HCS (agent will not retry)</span>
+                    </div>
+                    {memory.blocked_actions.map((b, i) => (
+                      <div key={i} style={{ padding: "12px 20px", borderBottom: i < memory.blocked_actions.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none", display: "flex", gap: "12px", alignItems: "center" }}>
+                        <span style={{ fontSize: "10px", fontWeight: "700", padding: "2px 6px", borderRadius: "4px", background: "rgba(220,38,38,0.15)", color: "#dc2626", fontFamily: "monospace" }}>BLOCKED</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: "13px", color: "#fca5a5", fontFamily: "monospace" }}>{b.tool}</div>
+                          {b.blockReason && <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "2px" }}>{b.blockReason}</div>}
+                        </div>
+                        {b.hashScanUrl && b.sequenceNumber && (
+                          <a href={b.hashScanUrl} target="_blank" rel="noopener" style={{ fontSize: "10px", color: "#10b981", fontFamily: "monospace" }}>HCS #{b.sequenceNumber} ↗</a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Open jobs */}
+                {memory.open_jobs.length > 0 && (
+                  <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden" }}>
+                    <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--border)" }}>
+                      <span style={{ fontSize: "12px", color: "#f59e0b", fontFamily: "monospace" }}>Open jobs — agent was reminded at startup</span>
+                    </div>
+                    {memory.open_jobs.map((j, i) => (
+                      <div key={i} style={{ padding: "12px 20px", borderBottom: i < memory.open_jobs.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none", display: "flex", gap: "12px", alignItems: "center" }}>
+                        <span style={{ fontSize: "11px", fontWeight: "700", padding: "2px 6px", borderRadius: "4px", background: "rgba(245,158,11,0.1)", color: "#f59e0b", fontFamily: "monospace" }}>
+                          {j.status}
+                        </span>
+                        <span style={{ fontSize: "13px", fontFamily: "monospace", color: "var(--text-primary)" }}>Job #{j.job_id}</span>
+                        {j.budget && <span style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>{j.budget} ℏ</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Tab: Vault */}
+        {tab === "vault" && (
+          <div>
+            <div style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: "8px", padding: "16px 20px", marginBottom: "20px" }}>
+              <div style={{ fontSize: "13px", fontWeight: "600", color: "#ef4444", marginBottom: "4px" }}>Secrets Vault</div>
+              <div style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
+                Store API keys, wallet keys, and credentials here. Your agent never holds raw secrets — it requests a 60-second scoped token at runtime.
+                Every grant and denial is logged to Hedera HCS.
+              </div>
+            </div>
+
+            {/* Store new secret */}
+            <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "20px", marginBottom: "20px" }}>
+              <div style={{ fontSize: "14px", fontWeight: "600", marginBottom: "16px" }}>Store New Secret</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.5fr auto", gap: "12px", alignItems: "end" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", color: "var(--text-tertiary)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Type</label>
+                  <select value={newSecret.secretType} onChange={e => setNewSecret(s => ({ ...s, secretType: e.target.value }))}
+                    style={{ width: "100%", padding: "8px 12px", background: "var(--bg-tertiary)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-primary)", fontSize: "13px" }}>
+                    {["openai_key","wallet_key","stripe_key","db_token","api_key","other"].map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", color: "var(--text-tertiary)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Label</label>
+                  <input value={newSecret.label} onChange={e => setNewSecret(s => ({ ...s, label: e.target.value }))} placeholder="e.g. Production OpenAI Key"
+                    style={{ width: "100%", padding: "8px 12px", background: "var(--bg-tertiary)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-primary)", fontSize: "13px" }} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "11px", color: "var(--text-tertiary)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>Value (encrypted at rest)</label>
+                  <input type="password" value={newSecret.value} onChange={e => setNewSecret(s => ({ ...s, value: e.target.value }))} placeholder="sk-proj-... or 0xdeadbeef..."
+                    style={{ width: "100%", padding: "8px 12px", background: "var(--bg-tertiary)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-primary)", fontSize: "13px" }} />
+                </div>
+                <button onClick={storeSecret} disabled={secretSaving || !newSecret.value.trim()} className="btn btn-primary" style={{ height: "36px", padding: "0 20px" }}>
+                  {secretSaving ? "..." : "Store"}
+                </button>
+              </div>
+            </div>
+
+            {/* Token result */}
+            {tokenResult && (
+              <div style={{ background: tokenResult.granted ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)", border: `1px solid ${tokenResult.granted ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`, borderRadius: "8px", padding: "16px 20px", marginBottom: "20px" }}>
+                {tokenResult.granted ? (
+                  <>
+                    <div style={{ fontSize: "13px", fontWeight: "600", color: "#10b981", marginBottom: "8px" }}>Capability token issued — expires in 60s</div>
+                    <code style={{ fontSize: "11px", fontFamily: "monospace", color: "#10b981", wordBreak: "break-all" }}>{tokenResult.token}</code>
+                    <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "8px" }}>Single-use. Use as: Authorization: Bearer {"{token}"} — grant logged to HCS</div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: "13px", color: "#ef4444" }}>Denied: {tokenResult.reason}</div>
+                )}
+              </div>
+            )}
+
+            {/* Secrets list */}
+            <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden", marginBottom: "20px" }}>
+              <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--border)" }}>
+                <span style={{ fontSize: "12px", color: "var(--text-tertiary)", fontFamily: "monospace" }}>{vaultSecrets.length} stored secret{vaultSecrets.length !== 1 ? "s" : ""}</span>
+              </div>
+              {vaultSecrets.length === 0 ? (
+                <div style={{ padding: "40px", textAlign: "center", color: "var(--text-tertiary)", fontSize: "13px" }}>No secrets stored. Add credentials above — your agent will request them via scoped tokens.</div>
+              ) : (
+                vaultSecrets.map((s, i) => (
+                  <div key={s.secretId} style={{ padding: "14px 20px", borderBottom: i < vaultSecrets.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none", display: "flex", alignItems: "center", gap: "12px" }}>
+                    <span style={{ fontSize: "11px", fontWeight: "700", padding: "2px 8px", borderRadius: "4px", background: "rgba(239,68,68,0.1)", color: "#ef4444", fontFamily: "monospace" }}>{s.secretType}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: "13px", color: "var(--text-primary)" }}>{s.label}</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-tertiary)", fontFamily: "monospace" }}>••••••••••••  ·  stored {timeAgo(s.createdAt)}</div>
+                    </div>
+                    <button onClick={() => requestToken(s.secretType)} style={{ background: "none", border: "1px solid rgba(16,185,129,0.4)", borderRadius: "4px", padding: "4px 10px", color: "#10b981", fontSize: "12px", cursor: "pointer", marginRight: "8px" }}>
+                      Get Token
+                    </button>
+                    <button onClick={() => deleteSecret(s.secretId)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: "4px", padding: "4px 10px", color: "var(--text-tertiary)", fontSize: "12px", cursor: "pointer" }}>
+                      Delete
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Grant history */}
+            {vaultGrants.length > 0 && (
+              <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden" }}>
+                <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--border)" }}>
+                  <span style={{ fontSize: "12px", color: "var(--text-tertiary)", fontFamily: "monospace" }}>Recent capability grants (logged to HCS)</span>
+                </div>
+                {vaultGrants.map((g, i) => (
+                  <div key={g.id} style={{ padding: "10px 20px", borderBottom: i < vaultGrants.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none", display: "flex", gap: "10px", alignItems: "center" }}>
+                    <span style={{ fontSize: "10px", fontWeight: "700", padding: "2px 6px", borderRadius: "4px", background: g.granted ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)", color: g.granted ? "#10b981" : "#ef4444", fontFamily: "monospace" }}>
+                      {g.granted ? "GRANTED" : "DENIED"}
+                    </span>
+                    <span style={{ fontSize: "12px", fontFamily: "monospace", color: "var(--text-secondary)" }}>{g.secret_type}</span>
+                    {g.endpoint && g.endpoint !== "*" && <span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>{g.endpoint}</span>}
+                    <span style={{ fontSize: "11px", color: "var(--text-tertiary)", marginLeft: "auto" }}>{timeAgo(g.timestamp)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
     </>
   );
