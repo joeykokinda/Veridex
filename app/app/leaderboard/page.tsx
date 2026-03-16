@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Logo } from "../components/Logo";
+import { Nav } from "../components/Nav";
 import { useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
 
@@ -90,17 +90,7 @@ export default function LeaderboardPage() {
 
   return (
     <>
-      <header className="header">
-        <div className="header-content">
-          <Link href="/" className="logo text-mono"><Logo size={20} /></Link>
-          <nav className="nav">
-            <Link href="/monitor">Monitor</Link>
-            <Link href="/dashboard">Agents</Link>
-            <Link href="/leaderboard" style={{ color: "var(--accent)" }}>Leaderboard</Link>
-            <a href="/skill.md" target="_blank">skill.md</a>
-          </nav>
-        </div>
-      </header>
+      <Nav />
 
       <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "32px 24px" }}>
         <div style={{ marginBottom: "32px" }}>
@@ -205,7 +195,7 @@ export default function LeaderboardPage() {
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "3px" }}>
                         <Link
-                          href={`/monitor/${encodeURIComponent(agent.id)}`}
+                          href={`/dashboard/${encodeURIComponent(agent.id)}`}
                           style={{ fontSize: "14px", fontWeight: "600", color: "var(--text-primary)", textDecoration: "none" }}
                         >
                           {agent.name || agent.id}
