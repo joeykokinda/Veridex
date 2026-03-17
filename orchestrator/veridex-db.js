@@ -91,6 +91,7 @@ function initSchema() {
   // Migrations — safe to run repeatedly
   try { db.exec("ALTER TABLE agents ADD COLUMN config TEXT"); } catch {}
   try { db.exec("ALTER TABLE agents ADD COLUMN hcs_encryption_key TEXT"); } catch {}
+  try { db.exec("ALTER TABLE agents ADD COLUMN reputation_score INTEGER NOT NULL DEFAULT 500"); } catch {}
 }
 
 function ensureJobsTable() {
@@ -234,13 +235,22 @@ function getAgentStats(agentId) {
   const blocked = d.prepare("SELECT COUNT(*) as c FROM logs WHERE agent_id = ? AND risk_level = 'blocked'").get(agentId);
   const high    = d.prepare("SELECT COUNT(*) as c FROM logs WHERE agent_id = ? AND risk_level = 'high'").get(agentId);
   const earnings = d.prepare("SELECT COALESCE(SUM(amount_hbar),0) as total FROM earnings WHERE agent_id = ?").get(agentId);
+  const agent   = d.prepare("SELECT reputation_score FROM agents WHERE id = ?").get(agentId);
   return {
     totalActions: total.c,
     actionsToday: today.c,
     blockedActions: blocked.c,
     highRiskActions: high.c,
-    totalEarned: earnings.total
+    totalEarned: earnings.total,
+    reputationScore: agent?.reputation_score ?? 500,
   };
+}
+
+function decrementReputation(agentId, delta = 5) {
+  const d = getDb();
+  d.prepare(
+    "UPDATE agents SET reputation_score = MAX(0, COALESCE(reputation_score, 500) - ?) WHERE id = ?"
+  ).run(delta, agentId);
 }
 
 function parseLog(row) {
@@ -432,7 +442,7 @@ module.exports = {
   // agents
   upsertAgent, getAgent, getAgentsByOwner, getAllAgents, findAgentByWallet,
   // logs
-  insertLog, getAgentLogs, getRecentLogs, getAgentStats,
+  insertLog, getAgentLogs, getRecentLogs, getAgentStats, decrementReputation,
   // alerts
   insertAlert, getAgentAlerts, resolveAlert, getActiveAlertCount,
   // policies

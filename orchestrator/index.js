@@ -14,7 +14,7 @@ require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 // Veridex trust layer modules
 const db = require("./veridex-db");
 const { checkBlocking, assessRisk, decodeAction } = require("./blocking");
-const { getAgentSplitConfig, setAgentSplitConfig } = db;
+const { getAgentSplitConfig, setAgentSplitConfig, decrementReputation } = db;
 const { createAgentTopic, writeToHCS, decryptHcsMessage, topicHashScanUrl } = require("./hcs-logger");
 const { randomBytes } = require("crypto");
 const { sendAlert } = require("./telegram");
@@ -311,6 +311,18 @@ app.post("/api/log", async (req, res) => {
   let agentRecord = db.getAgent(agentId);
   if (!agentRecord) {
     db.upsertAgent({ id: agentId, name: agentId });
+    // Auto-provision HCS topic so this agent's logs are on-chain from the start
+    try {
+      const topicResult = await createAgentTopic(agentId, agentId);
+      const hcsTopicId = topicResult?.topicId || null;
+      if (hcsTopicId) {
+        db.upsertAgent({ id: agentId, hcsTopicId });
+        const encKey = randomBytes(32).toString("hex");
+        db.getDb().prepare("UPDATE agents SET hcs_encryption_key = ? WHERE id = ?").run(encKey, agentId);
+      }
+    } catch (e) {
+      console.error(`[auto-HCS] Failed to create topic for ${agentId}:`, e.message);
+    }
     agentRecord = db.getAgent(agentId);
   }
 
@@ -373,6 +385,31 @@ app.post("/api/log", async (req, res) => {
         phase, timestamp: timestamp || Date.now()
       }
     });
+
+    // Decrement reputation score in DB (-5 per blocked action, floor 0)
+    decrementReputation(agentId, 5);
+
+    // Attempt on-chain reportAgent via registryAuthority (fire-and-forget)
+    if (registryAuthority && agentRecord.owner_wallet) {
+      (async () => {
+        try {
+          const provider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
+          const identityContract = new ethers.Contract(
+            process.env.AGENT_IDENTITY_CONTRACT,
+            AgentIdentity.abi,
+            registryAuthority.connect(provider)
+          );
+          await identityContract.reportAgent(
+            agentRecord.owner_wallet,
+            `Blocked by Veridex: ${blockResult.reason.slice(0, 200)}`
+          );
+          console.log(`[reputation] reportAgent on-chain for ${agentId} (${agentRecord.owner_wallet})`);
+        } catch (e) {
+          // reportAgent requires caller to be a registered agent; silently skip if not
+          console.debug(`[reputation] reportAgent skipped for ${agentId}: ${e.message}`);
+        }
+      })();
+    }
 
     return res.json({ allowed: false, reason: blockResult.reason });
   }
@@ -842,6 +879,53 @@ app.post("/v2/vault/request", async (req, res) => {
   }
 
   res.json(result);
+});
+
+// ── Post-execute webhook ──────────────────────────────────────────────────────
+
+/**
+ * POST /v2/post-execute
+ * Convenience wrapper — logs a phase:"after" entry for a tool call that already
+ * has a pre-check logId. Equivalent to calling /api/log with phase:"after".
+ * Body: { agentId, logId, action, tool, result, output }
+ */
+app.post("/v2/post-execute", async (req, res) => {
+  const { agentId, logId, action, tool, result, output } = req.body;
+  if (!agentId) return res.status(400).json({ error: "agentId required" });
+
+  let agentRecord = db.getAgent(agentId);
+  if (!agentRecord) {
+    db.upsertAgent({ id: agentId, name: agentId });
+    agentRecord = db.getAgent(agentId);
+  }
+
+  const params = { result: result || "success", output: typeof output === "string" ? output.slice(0, 200) : undefined };
+  const description = decodeAction({ action, tool, params, result: "success" });
+  const risk = assessRisk(action, tool, params);
+
+  const newLogId = db.insertLog({
+    agentId, action, tool, params, description,
+    result: result || "success", riskLevel: risk, phase: "after",
+    timestamp: Date.now(),
+  });
+
+  // Reference the pre-check logId in the HCS entry if provided
+  if (agentRecord.hcs_topic_id) {
+    writeToHCS(agentRecord.hcs_topic_id, {
+      event: "post_execute",
+      preCheckLogId: logId || null,
+      logId: newLogId, agentId, action, tool, params,
+      result: result || "success", riskLevel: risk,
+      timestamp: Date.now(),
+    }, agentRecord.hcs_encryption_key || null).catch(() => {});
+  }
+
+  broadcastLiveEvent({
+    type: "log",
+    log: { id: newLogId, agentId, agentName: agentRecord.name, action, tool, description, riskLevel: risk, phase: "after", timestamp: Date.now() }
+  });
+
+  res.json({ success: true, logId: newLogId, riskLevel: risk });
 });
 
 // ── Layer 4: ERC-8183 Job Monitor ─────────────────────────────────────────────

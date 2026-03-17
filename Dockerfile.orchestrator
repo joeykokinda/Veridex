@@ -1,18 +1,20 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies
+# Install dependencies (root package.json has all orchestrator deps + hardhat)
 COPY package*.json ./
-RUN npm install
+RUN npm install --omit=dev --ignore-scripts && \
+    npm install hardhat @nomicfoundation/hardhat-toolbox --save-dev
 
-# Copy everything
+# Copy source (app/ is excluded via .dockerignore — only orchestrator + contracts needed)
 COPY . .
 
-# Compile contracts to generate ABI artifacts (needed by orchestrator)
+# Compile contracts to generate ABI artifacts (artifacts/ is gitignored, built at image time)
 RUN npx hardhat compile
 
-WORKDIR /app
+# SQLite DB lives on a persistent volume at /data (set DATABASE_PATH=/data/veridex.db in Railway)
+RUN mkdir -p /data
 
 EXPOSE 3001
 

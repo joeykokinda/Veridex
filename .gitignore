@@ -46,5 +46,9 @@ DEMO.md
 SUBMISSION.md
 CLAUDE.md
 
+# SQLite WAL/SHM files (runtime state, not source)
+*.db-shm
+*.db-wal
+
 # Temporary files
 CLEANUP_INSTRUCTIONS.txt

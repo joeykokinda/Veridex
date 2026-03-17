@@ -9,27 +9,35 @@ import { useWallet } from "./lib/wallet";
 interface OverviewStats { totalAgents: number; logsToday: number; blockedToday: number; totalHbar: number; }
 interface FeedEntry { id: string; agentId: string; agentName?: string; description: string; riskLevel: string; action: string; timestamp: number; }
 
+const DEMO_FEED: FeedEntry[] = [
+  { id: "d1",  agentId: "research-bot",  agentName: "ResearchBot",  description: 'Searched web for "DeFi yield strategies Q1 2026"',      riskLevel: "low",     action: "web_search",    timestamp: 0 },
+  { id: "d2",  agentId: "trading-bot",   agentName: "TradingBot",   description: "Fetched price feed: HBAR/USDC",                         riskLevel: "low",     action: "api_call",      timestamp: 0 },
+  { id: "d3",  agentId: "research-bot",  agentName: "ResearchBot",  description: 'Read file: reports/market-summary.md',                  riskLevel: "low",     action: "file_read",     timestamp: 0 },
+  { id: "d4",  agentId: "rogue-bot",     agentName: "RogueBot",     description: "⛔ BLOCKED: Attempted to read /etc/passwd",             riskLevel: "blocked", action: "shell_exec",    timestamp: 0 },
+  { id: "d5",  agentId: "trading-bot",   agentName: "TradingBot",   description: "Earnings split: 2.4 ℏ → dev 60% · ops 30% · reinvest 10%", riskLevel: "low",  action: "earnings_split", timestamp: 0 },
+  { id: "d6",  agentId: "research-bot",  agentName: "ResearchBot",  description: 'Searched web for "Hedera HCS throughput benchmarks"',   riskLevel: "low",     action: "web_search",    timestamp: 0 },
+  { id: "d7",  agentId: "rogue-bot",     agentName: "RogueBot",     description: "⛔ BLOCKED: Outbound call to suspicious C2 domain",     riskLevel: "blocked", action: "api_call",      timestamp: 0 },
+  { id: "d8",  agentId: "trading-bot",   agentName: "TradingBot",   description: "Placed limit order: 50 HBAR @ $0.094",                  riskLevel: "medium",  action: "api_call",      timestamp: 0 },
+  { id: "d9",  agentId: "research-bot",  agentName: "ResearchBot",  description: "Wrote report: competitor-analysis-2026.md",            riskLevel: "low",     action: "file_write",    timestamp: 0 },
+  { id: "d10", agentId: "rogue-bot",     agentName: "RogueBot",     description: "⛔ BLOCKED: Tried to exfiltrate API key via web request", riskLevel: "blocked", action: "api_call",     timestamp: 0 },
+  { id: "d11", agentId: "trading-bot",   agentName: "TradingBot",   description: "Job completed: Market analysis · earned 1.8 ℏ",        riskLevel: "low",     action: "job_complete",  timestamp: 0 },
+  { id: "d12", agentId: "research-bot",  agentName: "ResearchBot",  description: 'Searched web for "autonomous agent security 2026"',    riskLevel: "low",     action: "web_search",    timestamp: 0 },
+];
+
 function LiveFeedDemo() {
-  const [entries, setEntries] = useState<FeedEntry[]>([]);
-  const [connected, setConnected] = useState(false);
-  const esRef = useRef<EventSource | null>(null);
+  const [entries, setEntries] = useState<FeedEntry[]>(() =>
+    DEMO_FEED.map((e, i) => ({ ...e, timestamp: Date.now() - (DEMO_FEED.length - i) * 14000 }))
+  );
+  const [connected] = useState(true);
+  const idxRef = useRef(0);
 
   useEffect(() => {
-    // Connect SSE directly to backend URL if available (avoids proxy buffering)
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "";
-    const sseUrl = backendUrl ? `${backendUrl}/feed/live` : "/api/proxy/feed/live";
-    const es = new EventSource(sseUrl);
-    esRef.current = es;
-    es.onopen = () => setConnected(true);
-    es.onerror = () => setConnected(false);
-    es.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.type === "init" && data.logs) setEntries(data.logs.slice(0, 12).reverse());
-        else if (data.type === "log" && data.log) setEntries(prev => [data.log, ...prev].slice(0, 12));
-      } catch {}
-    };
-    return () => es.close();
+    const interval = setInterval(() => {
+      const next = DEMO_FEED[idxRef.current % DEMO_FEED.length];
+      idxRef.current++;
+      setEntries(prev => [{ ...next, id: `${next.id}-${Date.now()}`, timestamp: Date.now() }, ...prev].slice(0, 12));
+    }, 3200);
+    return () => clearInterval(interval);
   }, []);
 
   const RISK_COLOR: Record<string, string> = { low: "#10b981", medium: "#f59e0b", high: "#ef4444", blocked: "#dc2626" };

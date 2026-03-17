@@ -1,6 +1,6 @@
 export function Logo({ size = 20 }: { size?: number }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+    <span style={{ display: "inline-flex", alignItems: "center" }}>
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 60 60"
@@ -31,7 +31,6 @@ export function Logo({ size = 20 }: { size?: number }) {
           <circle cx="18" cy="21" r="2" fill="currentColor" />
         </g>
       </svg>
-      Veridex
     </span>
   );
 }

@@ -1,0 +1,14 @@
+# Never send these to Docker build context
+node_modules/
+app/node_modules/
+app/.next/
+.git/
+.env
+*.log
+logs/
+coverage/
+typechain/
+typechain-types/
+orchestrator/veridex.db
+orchestrator/veridex.db-shm
+orchestrator/veridex.db-wal
