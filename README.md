@@ -20,12 +20,25 @@ Developers are flying blind.
 
 ---
 
-## The Solution
+## What Veridex Is
 
-Veridex intercepts every tool call — before and after execution:
+Veridex v2 is a **security and operations platform for OpenClaw agents**. It is not an agent reputation marketplace (that was ETHDenver v1 and is fully retired). The four pillars:
 
-1. **Before execution:** Check against blocking rules. If dangerous → return `{allowed: false}`, log to HCS, fire Telegram alert.
-2. **If allowed:** Execute the action normally.
+1. **HCS audit trail** — every tool call logged to Hedera HCS before it executes. Tamper-proof, permanent, verifiable on HashScan.
+2. **Active blocking layer** — shell exploits, credential leaks, C2 callbacks blocked before execution. Logged with proof.
+3. **Verifiable crash recovery** — agent reads its full operational state from HCS on restart via Mirror Node.
+4. **Earnings management** — HBAR from ERC-8183 jobs split automatically (developer / ops / reinvest) with HCS pay stubs.
+
+The on-ramp is a single skill.md line. The contracts (`AgentMarketplace`, `ContentRegistry`) are legacy scaffolding used only by the demo bots.
+
+---
+
+## How It Works
+
+Veridex intercepts every OpenClaw tool call — before and after execution:
+
+1. **Before execution:** Check against blocking rules. Dangerous? → return `{allowed: false}`, log to HCS, fire Telegram alert.
+2. **If allowed:** The agent executes the action normally.
 3. **After execution:** Log result to HCS for the permanent record.
 
 Every action is decoded in plain English and shown in the real-time dashboard.
@@ -62,15 +75,17 @@ Veridex Dashboard (Next.js, port 3000)
 | **HTS** | Earnings splits via TransferTransaction — programmable payroll |
 | **Mirror Node** | Agent memory recovery — read HCS history on startup |
 | **ERC-8004** | Reputation scores per agent (leaderboard + detail) |
-| **ERC-8183** | Job lifecycle tracking (marketplace contracts) |
+| **ERC-8183** | Job lifecycle — used only by demo bots to generate realistic activity |
 
 ### Deployed Contracts (Hedera Testnet)
 
-| Contract | Address | Hedera ID |
-|----------|---------|-----------|
-| AgentIdentity | `0x0874571bAfe20fC5F36759d3DD3A6AD44e428250` | `0.0.7992394` |
-| AgentMarketplace | `0x46e12242aEa85a1fa2EA5C769cd600fA64A434C6` | `0.0.7992397` |
-| ContentRegistry | `0x031bbBBCCe16EfBb289b3f6059996D0e9Bba5BcC` | `0.0.7992399` |
+| Contract | Address | Hedera ID | Role |
+|----------|---------|-----------|------|
+| AgentIdentity | `0x0874571bAfe20fC5F36759d3DD3A6AD44e428250` | `0.0.7992394` | Core — agent registration + rep scores |
+| AgentMarketplace | `0x46e12242aEa85a1fa2EA5C769cd600fA64A434C6` | `0.0.7992397` | **Legacy / demo-only** — job bidding from ETHDenver v1 |
+| ContentRegistry | `0x031bbBBCCe16EfBb289b3f6059996D0e9Bba5BcC` | `0.0.7992399` | **Legacy / demo-only** — not used by the core product |
+
+> **Note:** AgentMarketplace and ContentRegistry are carry-overs from the ETHDenver v1 reputation marketplace concept. They are not part of the v2 product. The demo bots (`trading-bot.js`, `rogue-bot.js`) reference them to generate realistic ERC-8183 job activity for the dashboard. The core product is the `skill.md` install flow, the blocking layer, the HCS audit trail, and the dashboard.
 
 ### Demo Agent Wallets (Hedera Testnet)
 
