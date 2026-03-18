@@ -394,47 +394,50 @@ function TelegramDemo() {
   );
 }
 
-// Reputation — dual-score: reputation (jobs) + safety (blocks)
+// Reputation — trust score + warning flags (blocks don't deduct, they flag)
 function ReputationDemo() {
-  // Phase 0: idle. Phase 1-3: job events (+rep). Phase 4-5: block events (-safety).
-  const [rep,    setRep]    = useState(500);
-  const [safety, setSafety] = useState(1000);
-  const [evts,   setEvts]   = useState<{text:string; color:string}[]>([]);
+  const [rep,      setRep]      = useState(500);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [evts,     setEvts]     = useState<{text:string; color:string}[]>([]);
   const [tick, setTick] = useState(0);
   useEffect(()=>{ const iv=setInterval(()=>setTick(t=>t+1),7000); return()=>clearInterval(iv); },[]);
   useEffect(()=>{
-    setRep(500); setSafety(1000); setEvts([]);
+    setRep(500); setWarnings([]); setEvts([]);
     const SEQ:[number,()=>void][] = [
-      [600,  ()=>{ setRep(510);  setEvts([{ text:"job completed on-time  +10", color:"#10b981" }]); }],
-      [1800, ()=>{ setRep(520);  setEvts(v=>[...v,{ text:"five-star rating        +20", color:"#10b981" }].slice(-3)); setRep(530); }],
-      [1900, ()=>{ setRep(540); }],
-      [3200, ()=>{ setSafety(995); setEvts(v=>[...v,{ text:"shell_exec blocked       −5", color:"#ef4444" }].slice(-3)); }],
-      [4400, ()=>{ setSafety(990); setEvts(v=>[...v,{ text:"curl|bash blocked        −5", color:"#ef4444" }].slice(-3)); }],
+      [600,  ()=>{ setRep(515);  setEvts([{ text:"job completed on-time  +15", color:"#10b981" }]); }],
+      [1800, ()=>{ setRep(545);  setEvts(v=>[...v,{ text:"five-star rating  +30", color:"#10b981" }].slice(-3)); }],
+      [3200, ()=>{ setWarnings(["shell_exec (credential access)"]); setEvts(v=>[...v,{ text:"shell_exec blocked  ⚠ warning", color:"#f59e0b" }].slice(-3)); }],
+      [4400, ()=>{ setWarnings(w=>[...w,"curl|bash (RCE attempt)"]); setEvts(v=>[...v,{ text:"curl|bash blocked  ⚠ warning", color:"#f59e0b" }].slice(-3)); }],
     ];
     const ts = SEQ.map(([d,fn])=>setTimeout(fn,d));
     return()=>ts.forEach(clearTimeout);
   },[tick]);
   return (
     <div className="ademo">
-      <div className="ademo-label">reputation + safety (dual score)</div>
+      <div className="ademo-label">trust score</div>
       <div style={{ fontFamily:"monospace", fontSize:"12px" }}>
-        {/* Reputation bar */}
+        {/* Score bar */}
         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"2px" }}>
-          <span style={{ color:"var(--text-tertiary)" }}>Reputation <span style={{ color:"#444", fontSize:"10px" }}>(job outcomes)</span></span>
-          <span style={{ color: rep>=600?"#10b981":rep>=400?"#f59e0b":"#ef4444", fontWeight:700, transition:"color 0.3s" }}>{rep}</span>
-        </div>
-        <div style={{ height:"4px", background:"#1a1a1a", borderRadius:"3px", overflow:"hidden", marginBottom:"7px" }}>
-          <div style={{ height:"100%", width:`${rep/10}%`, background:rep>=600?"#10b981":"#f59e0b", borderRadius:"3px", transition:"width 0.6s ease" }}/>
-        </div>
-        {/* Safety bar */}
-        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"2px" }}>
-          <span style={{ color:"var(--text-tertiary)" }}>Safety <span style={{ color:"#444", fontSize:"10px" }}>(block history)</span></span>
-          <span style={{ color: safety>=900?"#10b981":safety>=600?"#f59e0b":"#ef4444", fontWeight:700, transition:"color 0.3s" }}>{safety}</span>
+          <span style={{ color:"var(--text-tertiary)" }}>Trust score</span>
+          <span style={{ color:"#10b981", fontWeight:700, transition:"all 0.3s" }}>{rep}</span>
         </div>
         <div style={{ height:"4px", background:"#1a1a1a", borderRadius:"3px", overflow:"hidden", marginBottom:"8px" }}>
-          <div style={{ height:"100%", width:`${safety/10}%`, background:safety>=900?"#10b981":"#f59e0b", borderRadius:"3px", transition:"width 0.6s ease" }}/>
+          <div style={{ height:"100%", width:`${rep/10}%`, background:"#10b981", borderRadius:"3px", transition:"width 0.6s ease" }}/>
         </div>
-        {evts.map((e,i)=><div key={i} className="la" style={{ color:e.color, fontSize:"11px" }}>— {e.text}</div>)}
+        {/* Warning flags row */}
+        <div style={{ display:"flex", alignItems:"center", gap:"6px", marginBottom:"7px", minHeight:"18px" }}>
+          <span style={{ color:"var(--text-tertiary)", fontSize:"10px" }}>blocked actions</span>
+          <div style={{ display:"flex", gap:"3px" }}>
+            {[0,1,2,3].map(i=>(
+              <div key={i} style={{ width:10, height:10, borderRadius:"2px", transition:"all 0.35s",
+                background: i<warnings.length ? "rgba(245,158,11,0.25)" : "rgba(255,255,255,0.04)",
+                border:`1px solid ${i<warnings.length ? "rgba(245,158,11,0.5)" : "rgba(255,255,255,0.07)"}`,
+              }}/>
+            ))}
+          </div>
+          {warnings.length>0 && <span style={{ fontSize:"10px", color:"#f59e0b" }}>⚠ {warnings.length} flag{warnings.length>1?"s":""}</span>}
+        </div>
+        {evts.map((e,i)=><div key={i} className="la" style={{ color:e.color, fontSize:"10px" }}>— {e.text}</div>)}
       </div>
     </div>
   );
@@ -682,7 +685,7 @@ export default function LandingPage() {
             Autonomous agents search the web, run shell commands, move money, accept jobs, and call external services —
             continuously, with your credentials. Their behavior is invisible: no tamper-proof record, no pre-execution gate, no portable reputation, no verifiable recovery after failure.
           </p>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", border:"1px solid var(--border)", borderRadius:"10px", overflow:"hidden" }}>
+          <div className="problem-grid" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", border:"1px solid var(--border)", borderRadius:"10px", overflow:"hidden" }}>
             <CanDoCol />
             <CantVerifyCol />
           </div>
@@ -692,7 +695,7 @@ export default function LandingPage() {
         <section style={{ borderTop:"1px solid var(--border)", padding:"72px 24px", maxWidth:"820px", margin:"0 auto" }}>
           <p style={{ fontSize:"11px", fontFamily:"monospace", color:"var(--text-tertiary)", marginBottom:"14px", textTransform:"uppercase" as const, letterSpacing:"1px" }}>How it works</p>
           <h2 style={{ fontSize:"clamp(20px,3.5vw,28px)", fontWeight:700, marginBottom:"40px", lineHeight:1.2 }}>Every agent action runs through Veridex.</h2>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"32px" }}>
+          <div className="how-grid" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"32px" }}>
             {([
               { step:"01", label:"Submit", color:"#f59e0b", desc:"The agent submits an action — tool call, shell command, API request, fund transfer — before or as it executes." },
               { step:"02", label:"Check",  color:"#ef4444", desc:"Veridex evaluates it synchronously against blocking rules, delegation scope, and risk patterns. Dangerous actions are stopped immediately." },
@@ -730,7 +733,7 @@ export default function LandingPage() {
           <h2 style={{ fontSize:"clamp(20px,3.5vw,28px)", fontWeight:700, marginBottom:"40px" }}>Eleven capabilities. One install.</h2>
 
           {/* Row 1: interception + blocking */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px", marginBottom:"14px" }}>
+          <div className="bento-row" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px", marginBottom:"14px" }}>
             <BCard num="01 — control plane" title="Pre-execution interception"
               body="Every tool call routes through a synchronous check before it runs. Returns allowed: true or allowed: false. No async, no retry — the agent cannot proceed without a verdict."
               demo={<DecisionDemo />} icon={<IZap/>}
@@ -742,7 +745,7 @@ export default function LandingPage() {
           </div>
 
           {/* Row 2: HCS (wide) + recovery */}
-          <div style={{ display:"grid", gridTemplateColumns:"3fr 2fr", gap:"14px", marginBottom:"14px" }}>
+          <div className="bento-row" style={{ display:"grid", gridTemplateColumns:"3fr 2fr", gap:"14px", marginBottom:"14px" }}>
             <BCard num="03 — hedera" title="AES-256-GCM encrypted HCS audit"
               body="Every action encrypted with a per-agent key, appended to a Hedera HCS topic, final in 3–5 seconds. The plaintext never leaves your orchestrator. Tamper-proof. Verifiable on HashScan."
               demo={<HCSDemo />} icon={<ILink/>}
@@ -754,7 +757,7 @@ export default function LandingPage() {
           </div>
 
           {/* Row 3: earnings + vault */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px", marginBottom:"14px" }}>
+          <div className="bento-row" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px", marginBottom:"14px" }}>
             <BCard num="05 — economics" title="Automatic earnings settlement"
               body="ERC-8183 job earnings split via HTS to configurable dev/ops/reinvest wallets. Each split logged to HCS as a cryptographic pay stub. Verifiable by any party on HashScan."
               demo={<SplitDemo />} icon={<ICoins/>}
@@ -766,9 +769,9 @@ export default function LandingPage() {
           </div>
 
           {/* Row 4: reputation + identity */}
-          <div style={{ display:"grid", gridTemplateColumns:"2fr 3fr", gap:"14px", marginBottom:"14px" }}>
-            <BCard num="07 — reputation" title="Dual-score trust"
-              body="Reputation (job delivery) + Safety (block history). Two independent signals, both exposed at /v2/agent/:id/trust for agent-to-agent trust checks."
+          <div className="bento-row" style={{ display:"grid", gridTemplateColumns:"2fr 3fr", gap:"14px", marginBottom:"14px" }}>
+            <BCard num="07 — reputation" title="Trust score + warning flags"
+              body="Trust score (0–1000) grows from successful job delivery and ratings. Blocked actions flag the account with warnings — visible to other agents querying /v2/agent/:id/trust — but do not reduce the score."
               demo={<ReputationDemo />} icon={<IChart/>}
             />
             <BCard num="08 — identity" title="Challenge-response proof + auto-wallet"
@@ -778,7 +781,7 @@ export default function LandingPage() {
           </div>
 
           {/* Row 5: telegram + policies + webhooks */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"14px", marginBottom:"14px" }}>
+          <div className="bento-row" style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"14px", marginBottom:"14px" }}>
             <BCard num="09 — alerts" title="Telegram kill-switch"
               body="/block, /unblock, /agents, /logs, /status, /memory — manage any agent from a Telegram message. Quarantine fires in seconds."
               demo={<TelegramDemo />} icon={<ISend/>}
@@ -931,8 +934,21 @@ export default function LandingPage() {
           border-bottom: 1px solid rgba(255,255,255,0.04);
         }
 
-        @media (max-width: 640px) {
-          section[style*="grid"] { grid-template-columns: 1fr !important; }
+        /* Bento grid responsive */
+        .bento-row {
+          display: grid;
+          gap: 14px;
+          margin-bottom: 14px;
+        }
+        @media (max-width: 760px) {
+          .bento-row { grid-template-columns: 1fr !important; }
+          .problem-grid { grid-template-columns: 1fr !important; }
+          .how-grid { grid-template-columns: 1fr !important; gap: 24px !important; }
+          .ademo { height: auto; min-height: 140px; }
+        }
+        @media (max-width: 480px) {
+          .ademo { min-height: 120px; padding: 10px 12px; }
+          .ademo-label { font-size: 9px; margin-bottom: 7px; padding-bottom: 6px; }
         }
       `}</style>
     </>
