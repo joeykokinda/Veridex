@@ -562,11 +562,95 @@ function broadcastLiveEvent(event) {
  * POST /api/agent/register-monitor
  * Register an agent with the Veridex monitoring system.
  * Creates an HCS topic and stores agent in DB.
- * Body: { agentId, ownerWallet, name, hederaAccountId }
+ * Body: { agentId, ownerWallet?, name?, hederaAccountId?, telegramChatId? }
+ *
+ * Auto-wallet mode: if ownerWallet is omitted and DEPLOYER credentials are present,
+ * Veridex generates a fresh keypair, funds it with 2 HBAR, registers it on
+ * AgentIdentity, and returns the credentials. The agent owns its own wallet from
+ * first boot with zero human intervention.
  */
 app.post("/api/agent/register-monitor", async (req, res) => {
-  const { agentId, ownerWallet, name, hederaAccountId, telegramChatId } = req.body;
+  const { agentId, ownerWallet: providedWallet, name, hederaAccountId: providedHederaId, telegramChatId } = req.body;
   if (!agentId) return res.status(400).json({ error: "agentId required" });
+
+  // ── Auto-wallet creation ─────────────────────────────────────────────────
+  // If no ownerWallet supplied, generate a fresh keypair, fund it, and register
+  // it on-chain. Agent bootstraps its entire on-chain identity in ~30 seconds.
+  let ownerWallet = providedWallet;
+  let hederaAccountId = providedHederaId;
+  let autoWallet = null; // { address, privateKey } — returned once, agent must store it
+
+  if (!ownerWallet && registryAuthority) {
+    try {
+      // 1. Generate fresh ECDSA keypair
+      const newWallet = ethers.Wallet.createRandom();
+      ownerWallet = newWallet.address;
+      console.log(`[auto-wallet] Generated ${ownerWallet} for agent ${agentId}`);
+
+      // 2. Fund with 2 HBAR — Hedera SDK auto-creates the account on first transfer
+      const fClient = makeFaucetClient();
+      if (fClient) {
+        try {
+          const operatorId = AccountId.fromString(process.env.DEPLOYER_ACCOUNT_ID);
+          const fundTx = await new TransferTransaction()
+            .addHbarTransfer(operatorId, new Hbar(-2))
+            .addHbarTransfer(ownerWallet, new Hbar(2))
+            .execute(fClient);
+          await fundTx.getReceipt(fClient);
+          fClient.close();
+          console.log(`[auto-wallet] Funded ${ownerWallet} with 2 HBAR`);
+        } catch (e) {
+          try { fClient.close(); } catch {}
+          console.error(`[auto-wallet] Funding failed: ${e.message}`);
+        }
+        // Wait for Hedera finality so account is visible on Mirror Node
+        await new Promise(r => setTimeout(r, 4000));
+      }
+
+      // 3. Resolve Hedera account ID (0.0.XXXXX) from Mirror Node
+      try {
+        const mirrorResp = await fetch(
+          `https://testnet.mirrornode.hedera.com/api/v1/accounts/${ownerWallet}`
+        );
+        if (mirrorResp.ok) {
+          const mirrorData = await mirrorResp.json();
+          hederaAccountId = mirrorData.account || null;
+          console.log(`[auto-wallet] Hedera account: ${hederaAccountId}`);
+        }
+      } catch (e) {
+        console.error(`[auto-wallet] Mirror Node lookup failed: ${e.message}`);
+      }
+
+      // 4. Register on AgentIdentity contract via registerVerified()
+      try {
+        const msgHash = ethers.solidityPackedKeccak256(["address"], [ownerWallet]);
+        const registrySignature = await registryAuthority.signMessage(ethers.getBytes(msgHash));
+
+        const agentProvider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
+        const connectedWallet = new ethers.Wallet(newWallet.privateKey, agentProvider);
+        const identityContract = new ethers.Contract(
+          process.env.AGENT_IDENTITY_CONTRACT,
+          AgentIdentity.abi,
+          connectedWallet
+        );
+        await identityContract.registerVerified(
+          name || agentId,
+          "Auto-registered Veridex agent",
+          "autonomous",
+          registrySignature
+        );
+        console.log(`[auto-wallet] Registered ${ownerWallet} on AgentIdentity`);
+      } catch (e) {
+        console.error(`[auto-wallet] On-chain registration failed: ${e.message}`);
+        // Non-fatal — monitoring and HCS topic still work
+      }
+
+      autoWallet = { address: newWallet.address, privateKey: newWallet.privateKey };
+    } catch (e) {
+      console.error(`[auto-wallet] Auto-wallet creation failed: ${e.message}`);
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   let agentRecord = db.getAgent(agentId);
 
@@ -592,13 +676,25 @@ app.post("/api/agent/register-monitor", async (req, res) => {
     agentRecord = db.getAgent(agentId);
   }
 
-  res.json({
+  const response = {
     agentId,
     hcsTopicId,
     hashScanUrl: hcsTopicId ? topicHashScanUrl(hcsTopicId) : null,
     logEndpoint: "/api/log",
     message: "Agent registered with Veridex monitoring. Send logs to POST /api/log"
-  });
+  };
+
+  if (autoWallet) {
+    response.wallet = {
+      address: autoWallet.address,
+      privateKey: autoWallet.privateKey,
+      hederaAccountId,
+      warning: "Store this private key securely. It will not be shown again."
+    };
+    response.message = "Auto-wallet created. Agent bootstrapped with on-chain identity and HCS topic.";
+  }
+
+  res.json(response);
 });
 
 /**

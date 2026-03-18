@@ -10,18 +10,22 @@ interface OverviewStats { totalAgents: number; logsToday: number; blockedToday: 
 interface FeedEntry { id: string; agentId: string; agentName?: string; description: string; riskLevel: string; action: string; timestamp: number; }
 
 const DEMO_FEED: FeedEntry[] = [
-  { id: "d1", agentId: "research-bot-demo", agentName: "ResearchBot", description: 'Searched web for "Hedera HCS throughput benchmarks Q1 2026"', riskLevel: "low",     action: "web_search",     timestamp: 0 },
-  { id: "d2", agentId: "trading-bot-demo",  agentName: "TradingBot",  description: "Earnings split: 3.2 ℏ → dev 60% · ops 30% · reinvest 10% — pay stub #hcs:0.0.8228695:seq:1847", riskLevel: "low", action: "earnings_split", timestamp: 0 },
-  { id: "d3", agentId: "rogue-bot-demo",    agentName: "RogueBot",    description: "Attempted shell: cat /etc/passwd — credential harvest blocked", riskLevel: "blocked", action: "shell_exec",      timestamp: 0 },
+  { id: "d1", agentId: "research-bot-demo", agentName: "ResearchBot", description: 'web_search "Hedera HCS throughput benchmarks"', riskLevel: "low",     action: "web_search",     timestamp: 0 },
+  { id: "d2", agentId: "trading-bot-demo",  agentName: "TradingBot",  description: "earnings_split 3.2 ℏ → dev 60% · ops 30% · reinvest 10%", riskLevel: "low", action: "earnings_split", timestamp: 0 },
+  { id: "d3", agentId: "rogue-bot-demo",    agentName: "RogueBot",    description: "shell_exec cat /etc/passwd — credential harvest", riskLevel: "blocked", action: "shell_exec", timestamp: 0 },
+  { id: "d4", agentId: "data-bot-demo",     agentName: "DataBot",     description: "file_read /var/app/reports/quarterly.csv — 2.1MB", riskLevel: "low", action: "file_read", timestamp: 0 },
+  { id: "d5", agentId: "api-bot-demo",      agentName: "APIBot",      description: "api_call POST https://partner-api.io/webhook — 200 OK", riskLevel: "low", action: "api_call", timestamp: 0 },
 ];
 
 const DEMO_STATS = { totalAgents: 5, logsToday: 1284, blockedToday: 17, totalHbar: 48.3 };
 
-function LiveFeedDemo() {
+const RISK_COLOR: Record<string, string> = { low: "#10b981", medium: "#f59e0b", high: "#ef4444", blocked: "#dc2626" };
+const RISK_BG:    Record<string, string> = { low: "transparent", medium: "transparent", high: "rgba(239,68,68,0.04)", blocked: "rgba(220,38,38,0.07)" };
+
+function LiveFeedStrip() {
   const [entries, setEntries] = useState<FeedEntry[]>(() =>
-    DEMO_FEED.map((e, i) => ({ ...e, timestamp: Date.now() - (DEMO_FEED.length - i) * 18000 }))
+    DEMO_FEED.slice(0, 3).map((e, i) => ({ ...e, timestamp: Date.now() - (3 - i) * 18000 }))
   );
-  const [connected] = useState(true);
   const idxRef = useRef(0);
 
   useEffect(() => {
@@ -33,127 +37,32 @@ function LiveFeedDemo() {
     return () => clearInterval(interval);
   }, []);
 
-  const RISK_COLOR: Record<string, string> = { low: "#10b981", medium: "#f59e0b", high: "#ef4444", blocked: "#dc2626" };
-  const RISK_BG:    Record<string, string> = { low: "transparent", medium: "transparent", high: "rgba(239,68,68,0.04)", blocked: "rgba(220,38,38,0.07)" };
-
   return (
-    <div style={{ background: "#0d0d0f", border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", maxWidth: "640px", width: "100%" }}>
-      <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "10px", background: "#111113" }}>
-        <div style={{ display: "flex", gap: "6px" }}>
-          {["#ef4444","#f59e0b","#10b981"].map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: "50%", background: c }} />)}
+    <div style={{ background: "#0d0d0f", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden", width: "100%", maxWidth: "860px" }}>
+      <div style={{ padding: "8px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "10px", background: "#111113" }}>
+        <div style={{ display: "flex", gap: "5px" }}>
+          {["#ef4444","#f59e0b","#10b981"].map(c => <div key={c} style={{ width: 9, height: 9, borderRadius: "50%", background: c }} />)}
         </div>
         <span style={{ fontSize: "12px", color: "var(--text-tertiary)", fontFamily: "monospace", flex: 1 }}>veridex — live agent feed</span>
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: connected ? "#10b981" : "#555", animation: connected ? "livepulse 2s infinite" : "none" }} />
-          <span style={{ fontSize: "11px", color: connected ? "#10b981" : "var(--text-tertiary)", fontFamily: "monospace" }}>{connected ? "live" : "connecting..."}</span>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981", animation: "livepulse 2s infinite" }} />
+          <span style={{ fontSize: "11px", color: "#10b981", fontFamily: "monospace" }}>live</span>
         </div>
       </div>
-      <div style={{ minHeight: "300px" }}>
-        {entries.length === 0 ? (
-          <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-tertiary)", fontSize: "13px", fontFamily: "monospace" }}>Waiting for agent activity...</div>
-        ) : (
-          entries.map((e, i) => (
-            <div key={e.id || i} style={{ padding: "9px 16px", borderBottom: i < entries.length-1 ? "1px solid rgba(255,255,255,0.04)" : "none", display: "flex", gap: "10px", alignItems: "flex-start", background: RISK_BG[e.riskLevel] || "transparent" }}>
-              <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 6px", borderRadius: "3px", fontFamily: "monospace", textTransform: "uppercase" as const, flexShrink: 0, marginTop: "2px", color: RISK_COLOR[e.riskLevel] || "#aaa", border: `1px solid ${RISK_COLOR[e.riskLevel] || "#aaa"}44`, background: `${RISK_COLOR[e.riskLevel] || "#aaa"}11` }}>
-                {e.riskLevel}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: "13px", color: e.riskLevel === "blocked" ? "#fca5a5" : "var(--text-primary)", lineHeight: 1.4 }}>
-                  {e.riskLevel === "blocked" && <span style={{ color: "#ef4444" }}>⛔ </span>}
-                  {e.description || e.action}
-                </div>
-                <div style={{ fontSize: "11px", color: "var(--text-tertiary)", fontFamily: "monospace", marginTop: "2px" }}>
-                  {e.agentName || e.agentId} · {Math.floor((Date.now() - e.timestamp) / 1000)}s ago
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function EarningsSplitDemo() {
-  const [dev, setDev] = useState(60);
-  const [ops, setOps] = useState(30);
-  const [reinvest, setReinvest] = useState(10);
-  const [preview, setPreview] = useState(10);
-  const total = dev + ops + reinvest;
-  const valid = total === 100;
-
-  function handleDev(v: number) {
-    const clamped = Math.max(0, Math.min(100, v));
-    const remaining = 100 - clamped;
-    const ratio = ops + reinvest > 0 ? ops / (ops + reinvest) : 0.75;
-    setDev(clamped);
-    setOps(Math.round(remaining * ratio));
-    setReinvest(100 - clamped - Math.round(remaining * ratio));
-  }
-
-  return (
-    <div style={{ background: "#0d0d0f", border: `1px solid ${valid ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`, borderRadius: "12px", overflow: "hidden", maxWidth: "480px", width: "100%" }}>
-      <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "10px", background: "#111113" }}>
-        <div style={{ display: "flex", gap: "6px" }}>
-          {["#ef4444","#f59e0b","#10b981"].map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: "50%", background: c }} />)}
+      {entries.map((e, i) => (
+        <div key={e.id} style={{ padding: "8px 16px", borderBottom: i < entries.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none", display: "flex", gap: "10px", alignItems: "center", background: RISK_BG[e.riskLevel] }}>
+          <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 6px", borderRadius: "3px", fontFamily: "monospace", textTransform: "uppercase" as const, flexShrink: 0, color: RISK_COLOR[e.riskLevel], border: `1px solid ${RISK_COLOR[e.riskLevel]}44`, background: `${RISK_COLOR[e.riskLevel]}11`, minWidth: "52px", textAlign: "center" as const }}>
+            {e.riskLevel}
+          </span>
+          <span style={{ fontSize: "13px", color: e.riskLevel === "blocked" ? "#fca5a5" : "var(--text-secondary)", fontFamily: "monospace", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>
+            {e.riskLevel === "blocked" && <span style={{ color: "#ef4444" }}>⛔ </span>}
+            {e.description}
+          </span>
+          <span style={{ fontSize: "11px", color: "var(--text-tertiary)", fontFamily: "monospace", flexShrink: 0 }}>
+            {e.agentName} · {Math.floor((Date.now() - e.timestamp) / 1000)}s ago
+          </span>
         </div>
-        <span style={{ fontSize: "12px", color: "var(--text-tertiary)", fontFamily: "monospace", flex: 1 }}>veridex — earnings split config</span>
-        <span style={{ fontSize: "11px", fontFamily: "monospace", color: valid ? "#10b981" : "#ef4444" }}>{total}/100</span>
-      </div>
-      <div style={{ padding: "20px" }}>
-        {[
-          { label: "Developer", value: dev, set: setDev, color: "#10b981" },
-          { label: "Operations", value: ops, set: setOps, color: "#f59e0b" },
-          { label: "Reinvest", value: reinvest, set: setReinvest, color: "#818cf8" },
-        ].map(({ label, value, set, color }) => (
-          <div key={label} style={{ marginBottom: "16px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-              <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>{label}</span>
-              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                <input
-                  type="number"
-                  min={0} max={100}
-                  value={value}
-                  onChange={e => set(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
-                  style={{ width: "52px", background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "4px", padding: "2px 6px", fontSize: "13px", color: color, fontFamily: "monospace", textAlign: "right" }}
-                />
-                <span style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>%</span>
-              </div>
-            </div>
-            <div style={{ height: "6px", background: "var(--bg-secondary)", borderRadius: "3px", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${value}%`, background: color, borderRadius: "3px", transition: "width 0.2s" }} />
-            </div>
-          </div>
-        ))}
-
-        <div style={{ borderTop: "1px solid var(--border)", paddingTop: "16px", marginTop: "4px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-            <span style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>Preview earnings</span>
-            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-              <input
-                type="number"
-                min={0.01} step={0.5}
-                value={preview}
-                onChange={e => setPreview(Math.max(0.01, parseFloat(e.target.value) || 1))}
-                style={{ width: "60px", background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "4px", padding: "2px 6px", fontSize: "13px", color: "#fff", fontFamily: "monospace", textAlign: "right" }}
-              />
-              <span style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>ℏ earned</span>
-            </div>
-          </div>
-          {valid ? (
-            <div style={{ fontFamily: "monospace", fontSize: "12px", lineHeight: 2, background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.15)", borderRadius: "6px", padding: "10px 12px" }}>
-              <div><span style={{ color: "#10b981" }}>→ {(preview * dev / 100).toFixed(4)} ℏ</span><span style={{ color: "var(--text-tertiary)" }}> to developer wallet</span></div>
-              <div><span style={{ color: "#f59e0b" }}>→ {(preview * ops / 100).toFixed(4)} ℏ</span><span style={{ color: "var(--text-tertiary)" }}> to ops budget</span></div>
-              <div><span style={{ color: "#818cf8" }}>→ {(preview * reinvest / 100).toFixed(4)} ℏ</span><span style={{ color: "var(--text-tertiary)" }}> reinvested</span></div>
-              <div style={{ marginTop: "6px", paddingTop: "6px", borderTop: "1px solid rgba(255,255,255,0.06)", color: "var(--text-tertiary)" }}>
-                pay stub logged to HCS · verifiable on HashScan
-              </div>
-            </div>
-          ) : (
-            <div style={{ fontSize: "12px", color: "#ef4444", fontFamily: "monospace" }}>splits must add to 100 (currently {total})</div>
-          )}
-        </div>
-      </div>
+      ))}
     </div>
   );
 }
@@ -169,9 +78,7 @@ export default function LandingPage() {
         const r = await fetch("/api/proxy/api/monitor/overview");
         if (r.ok) setStats(await r.json());
         else setStats(DEMO_STATS);
-      } catch {
-        setStats(DEMO_STATS);
-      }
+      } catch { setStats(DEMO_STATS); }
     };
     load();
     const iv = setInterval(load, 10000);
@@ -181,178 +88,316 @@ export default function LandingPage() {
   const snippet = `{\n  "skills": ["https://veridex.sbs/skill.md"]\n}`;
   function copy() { navigator.clipboard.writeText(snippet).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }); }
 
+  const s = stats ?? DEMO_STATS;
+
   return (
     <>
       <Nav />
       <main>
 
-        {/* Hero */}
-        <section style={{ padding: "90px 24px 70px", maxWidth: "1200px", margin: "0 auto", display: "flex", gap: "60px", alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 440px", minWidth: 0 }}>
-            <div style={{ display: "inline-block", fontSize: "12px", fontFamily: "monospace", color: "#10b981", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: "20px", padding: "4px 12px", marginBottom: "24px" }}>
-              OpenClaw · Hedera HCS · ERC-8004 · ERC-8183
-            </div>
-            <h1 style={{ fontSize: "50px", fontWeight: 800, lineHeight: 1.1, marginBottom: "20px", letterSpacing: "-1px" }}>
-              Your agents are earning,<br />spending, and running.<br />
-              <span style={{ color: "#10b981" }}>Who&apos;s watching?</span>
-            </h1>
-            <p style={{ fontSize: "17px", color: "var(--text-secondary)", lineHeight: 1.7, marginBottom: "36px", maxWidth: "480px" }}>
-              Veridex is the control plane for autonomous agents — tamper-proof audit trail on Hedera HCS,
-              automatic HBAR earnings splits via HTS, and verifiable crash recovery from the blockchain.
-            </p>
-            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-              <button onClick={connect} disabled={isConnecting} style={{ background: "#10b981", border: "none", borderRadius: "8px", padding: "12px 28px", fontSize: "15px", fontWeight: 700, color: "#000", cursor: "pointer", opacity: isConnecting ? 0.7 : 1 }}>
-                {isConnecting ? "Connecting..." : "Connect Wallet →"}
-              </button>
-              <Link href="/leaderboard" style={{ display: "inline-flex", alignItems: "center", background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", padding: "12px 28px", fontSize: "15px", fontWeight: 500, color: "var(--text-primary)", textDecoration: "none" }}>
-                View live demo
-              </Link>
-            </div>
+        {/* ── HERO ─────────────────────────────────────────────── */}
+        <section style={{ padding: "100px 24px 64px", maxWidth: "820px", margin: "0 auto", textAlign: "center" }}>
+          <div style={{ fontSize: "12px", fontFamily: "monospace", color: "#10b981", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: "20px", padding: "4px 14px", display: "inline-block", marginBottom: "32px" }}>
+            OpenClaw · Hedera HCS · ERC-8004 · ERC-8183
           </div>
-          <div style={{ flex: "1 1 340px", minWidth: 0, display: "flex", justifyContent: "center" }}>
-            <LiveFeedDemo />
+          <h1 style={{ fontSize: "clamp(34px,5.5vw,56px)", fontWeight: 800, lineHeight: 1.1, letterSpacing: "-1.5px", marginBottom: "24px" }}>
+            Trust infrastructure<br />
+            <span style={{ color: "#10b981" }}>for autonomous agents</span>
+          </h1>
+          <p style={{ fontSize: "18px", color: "var(--text-secondary)", lineHeight: 1.75, marginBottom: "12px", maxWidth: "600px", margin: "0 auto 12px" }}>
+            Agents can earn, spend, coordinate, and execute.
+          </p>
+          <p style={{ fontSize: "18px", color: "var(--text-tertiary)", lineHeight: 1.75, marginBottom: "40px", maxWidth: "600px", margin: "0 auto 40px" }}>
+            Without Veridex, they cannot do it safely or verifiably.
+          </p>
+          <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
+            <Link href="/dashboard" style={{ background: "#10b981", border: "none", borderRadius: "8px", padding: "13px 28px", fontSize: "15px", fontWeight: 700, color: "#000", textDecoration: "none", display: "inline-block" }}>
+              Open Dashboard
+            </Link>
+            <Link href="/leaderboard" style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", padding: "13px 28px", fontSize: "15px", fontWeight: 500, color: "var(--text-primary)", textDecoration: "none", display: "inline-block" }}>
+              View Live Feed
+            </Link>
           </div>
         </section>
 
-        {/* Stats bar */}
-        <section style={{ borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)", padding: "28px 24px" }}>
-          <div style={{ maxWidth: "900px", margin: "0 auto", display: "flex", gap: "48px", justifyContent: "center", flexWrap: "wrap" }}>
+        {/* ── LIVE STRIP ───────────────────────────────────────── */}
+        <section style={{ padding: "0 24px 24px", display: "flex", flexDirection: "column" as const, alignItems: "center", gap: "14px" }}>
+          <LiveFeedStrip />
+          <div style={{ fontFamily: "monospace", fontSize: "12px", color: "var(--text-tertiary)", display: "flex", gap: "24px", flexWrap: "wrap", justifyContent: "center" }}>
             {[
-              { label: "HCS messages logged", value: (stats?.logsToday ?? 0).toLocaleString() },
-              { label: "Agents monitored",     value: (stats?.totalAgents ?? 0).toLocaleString() },
-              { label: "Dangerous actions blocked", value: (stats?.blockedToday ?? 0).toLocaleString() },
-              { label: "HBAR tracked",         value: `${(stats?.totalHbar ?? 0).toFixed(2)} ℏ` },
-            ].map(s => (
-              <div key={s.label} style={{ textAlign: "center" }}>
-                <div style={{ fontSize: "30px", fontWeight: 700, fontFamily: "monospace", color: "#10b981" }}>{s.value}</div>
-                <div style={{ fontSize: "12px", color: "var(--text-tertiary)", marginTop: "4px" }}>{s.label}</div>
-              </div>
-            ))}
+              `${s.totalAgents} agents monitored`,
+              `${s.logsToday.toLocaleString()} actions logged`,
+              `${s.blockedToday} blocked`,
+              `${s.totalHbar.toFixed(1)} ℏ tracked`,
+            ].map(item => <span key={item}>{item}</span>)}
           </div>
         </section>
 
-        {/* Problem */}
-        <section style={{ padding: "80px 24px", maxWidth: "1100px", margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: "52px" }}>
-            <h2 style={{ fontSize: "34px", fontWeight: 700, marginBottom: "12px" }}>The problem with agents today</h2>
-            <p style={{ fontSize: "16px", color: "var(--text-tertiary)" }}>Every developer starts with this. It&apos;s a disaster waiting to happen.</p>
-          </div>
-          <div style={{ fontFamily: "monospace", background: "#0d0d0f", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "10px", padding: "20px 24px", marginBottom: "52px", fontSize: "13px", lineHeight: 2 }}>
-            <div style={{ color: "#555", marginBottom: "4px" }}># your agent .env — full permanent access to everything</div>
-            {[["OPENAI_API_KEY","sk-proj-BL9z..."],["WALLET_PRIVATE_KEY","0xdeadbeef..."],["STRIPE_SECRET","sk_live_9xK..."],["DATABASE_URL","postgres://prod..."]].map(([k,v]) => (
-              <div key={k}><span style={{ color: "#10b981" }}>{k}</span><span style={{ color: "var(--text-tertiary)" }}>=</span><span style={{ color: "#fca5a5" }}>{v}</span></div>
-            ))}
-            <div style={{ color: "#555", marginTop: "8px" }}># one prompt injection → everything exposed. permanently.</div>
-          </div>
-          <div style={{ display: "flex", gap: "32px", flexWrap: "wrap" }}>
-            {[
-              { icon: "○", title: "Complete blindness", body: "Your agent runs 24/7 with your credentials and you have no idea what it's actually doing. No logs. No audit trail. No proof." },
-              { icon: "○", title: "No audit trail", body: "When something goes wrong — a rogue action, unexpected spend, compromised tool — there's no record. You can't prove what happened." },
-              { icon: "○", title: "Crash = lost context", body: "When your agent crashes it wakes up amnesiac. Open jobs get abandoned. Pending HBAR uncollected. It retries blocked actions." },
-              { icon: "○", title: "No earnings accounting", body: "Your agent earns HBAR from ERC-8183 jobs but you have no pay stubs. No proof of what was earned, split, or spent. No record at all — just a wallet balance you can't explain." },
-            ].map(c => (
-              <div key={c.title} style={{ flex: "1 1 200px" }}>
-                <div style={{ fontSize: "16px", marginBottom: "10px", color: "var(--text-tertiary)" }}>{c.icon}</div>
-                <div style={{ fontSize: "15px", fontWeight: 600, marginBottom: "8px" }}>{c.title}</div>
-                <div style={{ fontSize: "14px", color: "var(--text-tertiary)", lineHeight: 1.6 }}>{c.body}</div>
-              </div>
-            ))}
-          </div>
-        </section>
+        {/* ── PRIMARY PROBLEM ──────────────────────────────────── */}
+        <section style={{ padding: "80px 24px", maxWidth: "860px", margin: "0 auto" }}>
+          <p style={{ fontSize: "12px", fontFamily: "monospace", color: "var(--text-tertiary)", marginBottom: "16px", textTransform: "uppercase" as const, letterSpacing: "1px" }}>The problem</p>
+          <h2 style={{ fontSize: "clamp(24px,4vw,38px)", fontWeight: 800, lineHeight: 1.15, marginBottom: "20px", letterSpacing: "-0.5px" }}>
+            The problem isn&apos;t that<br />agents are powerful.
+          </h2>
+          <p style={{ fontSize: "20px", color: "#10b981", fontWeight: 600, marginBottom: "32px" }}>
+            It&apos;s that they act without a shared trust layer.
+          </p>
+          <p style={{ fontSize: "16px", color: "var(--text-secondary)", lineHeight: 1.8, marginBottom: "44px", maxWidth: "640px" }}>
+            Autonomous agents can search the web, execute shell commands, move money, accept jobs from other agents, and call external services — continuously, 24/7, with your credentials.
+            But their behavior is still opaque: no immutable audit trail, no pre-execution enforcement, no portable reputation, no verifiable recovery after failure.
+          </p>
 
-        {/* Solution */}
-        <section style={{ padding: "0 24px 80px", maxWidth: "1100px", margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: "44px" }}>
-            <h2 style={{ fontSize: "34px", fontWeight: 700, marginBottom: "12px" }}>What Veridex does</h2>
-            <p style={{ fontSize: "16px", color: "var(--text-tertiary)" }}>Four layers. Each one solves a real problem.</p>
-          </div>
-          <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "48px" }}>
-            {[
-              { icon: "⬛", title: "Immutable audit trail on Hedera HCS", body: "Every action logged before it executes. Tamper-proof. Permanent. Click any entry to verify on HashScan. Even if your server burns down, the history is on-chain." },
-              { icon: "⬛", title: "Active blocking before execution", body: "Shell exploits, credential leaks, C2 callbacks, unauthorized API calls — blocked before they execute. Blocked actions logged to HCS too. Your agent can't hide what it tried." },
-              { icon: "⬛", title: "Verifiable crash recovery", body: "One API call at startup. Agent gets its full operational state from HCS: open jobs, pending earnings, what was blocked. Cryptographically proven. Can't be tampered with." },
-              { icon: "⬛", title: "Automatic earnings management", body: "When your agent earns HBAR from an ERC-8183 job, Veridex automatically splits it — developer wallet, ops budget, reinvestment pool — and logs a cryptographic pay stub to HCS. Perfect accounting. Zero manual work." },
-            ].map(c => (
-              <div key={c.title} style={{ flex: "1 1 200px", padding: "24px", background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "10px" }}>
-                <div style={{ fontSize: "14px", color: "#10b981", fontFamily: "monospace", marginBottom: "12px" }}>{c.icon}</div>
-                <div style={{ fontSize: "15px", fontWeight: 600, marginBottom: "10px", color: "#10b981" }}>{c.title}</div>
-                <div style={{ fontSize: "14px", color: "var(--text-tertiary)", lineHeight: 1.6 }}>{c.body}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Earnings split interactive demo */}
-          <div style={{ display: "flex", gap: "48px", alignItems: "center", flexWrap: "wrap", background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "12px", padding: "36px" }}>
-            <div style={{ flex: "1 1 280px" }}>
-              <div style={{ fontSize: "11px", fontFamily: "monospace", color: "#818cf8", background: "rgba(129,140,248,0.1)", border: "1px solid rgba(129,140,248,0.2)", borderRadius: "20px", padding: "3px 10px", display: "inline-block", marginBottom: "16px" }}>
-                optional · per-agent
-              </div>
-              <h3 style={{ fontSize: "22px", fontWeight: 700, marginBottom: "12px" }}>Configure your earnings split</h3>
-              <p style={{ fontSize: "14px", color: "var(--text-tertiary)", lineHeight: 1.7, marginBottom: "16px" }}>
-                Set how each agent distributes its HBAR earnings. Every split is automatically logged as a
-                cryptographic pay stub to Hedera HCS — verifiable proof of every payment, forever.
-              </p>
-              <p style={{ fontSize: "13px", color: "var(--text-tertiary)", lineHeight: 1.6 }}>
-                Splits are optional and configurable per-agent from the dashboard.
-                Default is 60% developer · 30% ops · 10% reinvest.
-              </p>
-            </div>
-            <div style={{ flex: "1 1 300px", display: "flex", justifyContent: "center" }}>
-              <EarningsSplitDemo />
-            </div>
-          </div>
-        </section>
-
-        {/* Why Hedera */}
-        <section style={{ borderTop: "1px solid var(--border)", padding: "80px 24px" }}>
-          <div style={{ maxWidth: "900px", margin: "0 auto" }}>
-            <div style={{ textAlign: "center", marginBottom: "48px" }}>
-              <h2 style={{ fontSize: "34px", fontWeight: 700, marginBottom: "12px" }}>Why Hedera</h2>
-              <p style={{ fontSize: "16px", color: "var(--text-tertiary)" }}>The economics of agent-scale logging only work on one network.</p>
-            </div>
-            <div style={{ display: "flex", gap: "32px", flexWrap: "wrap", marginBottom: "48px" }}>
-              {[
-                { network: "Ethereum", cost: "$3 – $50", per: "per HCS message", color: "#ef4444", note: "At 100 actions/day that's $150–$5,000/day per agent." },
-                { network: "Hedera HCS", cost: "$0.0008", per: "per message", color: "#10b981", note: "Same 100 actions/day costs $0.08. Agent-scale audit is economically possible." },
-              ].map(r => (
-                <div key={r.network} style={{ flex: 1, minWidth: "220px", padding: "28px", background: "var(--bg-secondary)", border: `1px solid ${r.color}33`, borderRadius: "10px" }}>
-                  <div style={{ fontSize: "13px", color: "var(--text-tertiary)", fontFamily: "monospace", marginBottom: "8px" }}>{r.network}</div>
-                  <div style={{ fontSize: "32px", fontWeight: 700, fontFamily: "monospace", color: r.color, marginBottom: "4px" }}>{r.cost}</div>
-                  <div style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "14px" }}>{r.per}</div>
-                  <div style={{ fontSize: "13px", color: "var(--text-tertiary)", lineHeight: 1.6 }}>{r.note}</div>
+          {/* What agents can do — the gap */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
+            <div style={{ padding: "28px", borderRight: "1px solid var(--border)" }}>
+              <div style={{ fontSize: "12px", fontFamily: "monospace", color: "#10b981", marginBottom: "18px", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>What agents can do</div>
+              {["Execute tools and shell commands","Access files and credentials","Move funds and accept jobs","Call external services and APIs","Interact with other agents"].map(item => (
+                <div key={item} style={{ display: "flex", gap: "10px", alignItems: "flex-start", marginBottom: "10px" }}>
+                  <span style={{ color: "#10b981", fontSize: "13px", flexShrink: 0, marginTop: "2px" }}>✓</span>
+                  <span style={{ fontSize: "14px", color: "var(--text-secondary)", lineHeight: 1.5 }}>{item}</span>
                 </div>
               ))}
             </div>
-            <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "10px", padding: "24px 28px", fontSize: "15px", color: "var(--text-secondary)", lineHeight: 1.8 }}>
-              Hedera HCS gives you <strong style={{ color: "var(--text-primary)" }}>3–5 second finality</strong>,{" "}
-              <strong style={{ color: "var(--text-primary)" }}>$0.0008 per message</strong>, and an immutable public audit log —
-              the only reason agent-scale infrastructure is economically viable.{" "}
-              <span style={{ color: "var(--text-tertiary)" }}>Veridex handles all of it so you never have to think about it.</span>
+            <div style={{ padding: "28px", background: "rgba(239,68,68,0.03)" }}>
+              <div style={{ fontSize: "12px", fontFamily: "monospace", color: "#ef4444", marginBottom: "18px", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>What no one can verify</div>
+              {["That they did what was intended","That dangerous actions were stopped","That state can be recovered after failure","That earnings were fairly accounted for","That behavior was what was claimed"].map(item => (
+                <div key={item} style={{ display: "flex", gap: "10px", alignItems: "flex-start", marginBottom: "10px" }}>
+                  <span style={{ color: "#ef4444", fontSize: "13px", flexShrink: 0, marginTop: "2px" }}>✕</span>
+                  <span style={{ fontSize: "14px", color: "var(--text-tertiary)", lineHeight: 1.5 }}>{item}</span>
+                </div>
+              ))}
             </div>
           </div>
         </section>
 
-        {/* Install */}
-        <section style={{ padding: "80px 24px 100px", maxWidth: "620px", margin: "0 auto", textAlign: "center" }}>
-          <h2 style={{ fontSize: "30px", fontWeight: 700, marginBottom: "12px" }}>30 seconds to install</h2>
-          <p style={{ fontSize: "16px", color: "var(--text-tertiary)", marginBottom: "28px" }}>Add one line to your OpenClaw config. That&apos;s it.</p>
-          <div style={{ position: "relative", background: "#0d0d0f", border: "1px solid var(--border)", borderRadius: "10px", padding: "18px 20px", textAlign: "left", marginBottom: "14px" }}>
-            <pre style={{ margin: 0, fontFamily: "monospace", fontSize: "14px", color: "var(--text-secondary)", lineHeight: 1.7 }}>{snippet}</pre>
-            <button onClick={copy} style={{ position: "absolute", top: "10px", right: "10px", background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "5px", padding: "3px 10px", fontSize: "11px", color: "var(--text-tertiary)", cursor: "pointer" }}>
-              {copied ? "✓ Copied" : "Copy"}
-            </button>
+        {/* ── WHY IT MATTERS NOW ───────────────────────────────── */}
+        <section style={{ borderTop: "1px solid var(--border)", padding: "72px 24px", background: "rgba(16,185,129,0.02)" }}>
+          <div style={{ maxWidth: "760px", margin: "0 auto" }}>
+            <p style={{ fontSize: "12px", fontFamily: "monospace", color: "var(--text-tertiary)", marginBottom: "16px", textTransform: "uppercase" as const, letterSpacing: "1px" }}>Why it matters now</p>
+            <h2 style={{ fontSize: "clamp(22px,3.5vw,30px)", fontWeight: 700, marginBottom: "24px", lineHeight: 1.2 }}>
+              As agent-to-agent commerce emerges,<br />trust cannot depend on local logs.
+            </h2>
+            <p style={{ fontSize: "16px", color: "var(--text-secondary)", lineHeight: 1.8, marginBottom: "32px" }}>
+              When agents transact autonomously, reputation and accountability need tamper-proof attestation —
+              not private dashboards or post-hoc debugging.
+              Repeated low-cost settlement, verifiable action history, and on-chain reputation scores
+              are the primitives agent economies require.
+            </p>
+            <p style={{ fontSize: "15px", color: "var(--text-tertiary)", lineHeight: 1.8, fontStyle: "italic" }}>
+              Hedera is optimized exactly for this: $0.0008 per message, 3–5 second finality,
+              immutable append-only topics. The economics of per-action attestation only work here.
+            </p>
           </div>
-          <p style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "28px" }}>Your agent will be logged to Hedera HCS and appear in the monitor immediately.</p>
-          <button onClick={connect} style={{ background: "#10b981", border: "none", borderRadius: "8px", padding: "12px 32px", fontSize: "15px", fontWeight: 700, color: "#000", cursor: "pointer" }}>
-            Connect Wallet to get started →
-          </button>
         </section>
 
-        {/* Footer */}
+        {/* ── SECURITY PROOF-POINT (supporting, not thesis) ────── */}
+        <section style={{ padding: "72px 24px", maxWidth: "820px", margin: "0 auto" }}>
+          <p style={{ fontSize: "12px", fontFamily: "monospace", color: "var(--text-tertiary)", marginBottom: "16px", textTransform: "uppercase" as const, letterSpacing: "1px" }}>What opacity looks like in practice</p>
+          <h2 style={{ fontSize: "clamp(20px,3vw,26px)", fontWeight: 700, marginBottom: "20px" }}>
+            The security model is currently absurd.
+          </h2>
+          <div style={{ fontFamily: "monospace", background: "#0d0d0f", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "8px", padding: "18px 22px", marginBottom: "16px", fontSize: "13px", lineHeight: 2.1 }}>
+            {[["OPENAI_API_KEY","sk-proj-BL9z..."],["WALLET_PRIVATE_KEY","0xdeadbeef..."],["STRIPE_SECRET","sk_live_9xK..."],["DATABASE_URL","postgres://prod..."]].map(([k,v]) => (
+              <div key={k}><span style={{ color: "#10b981" }}>{k}</span><span style={{ color: "#555" }}>=</span><span style={{ color: "#fca5a5" }}>{v}</span></div>
+            ))}
+            <div style={{ color: "#555", marginTop: "8px" }}># one prompt injection, unsafe skill, or malicious tool call</div>
+            <div style={{ color: "#555" }}># and the agent acts before anyone can prove or prevent it</div>
+          </div>
+          <p style={{ fontSize: "14px", color: "var(--text-tertiary)", lineHeight: 1.7 }}>
+            Credential exposure is the most visible symptom. But the deeper problem is that every action —
+            safe or unsafe — happens with no tamper-proof record and no pre-execution gate.
+            That makes agents unsuitable for trust-sensitive coordination at scale.
+          </p>
+        </section>
+
+        {/* ── POSITIONING ──────────────────────────────────────── */}
+        <section style={{ borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)", padding: "72px 24px", background: "rgba(16,185,129,0.02)" }}>
+          <div style={{ maxWidth: "760px", margin: "0 auto" }}>
+            <p style={{ fontSize: "12px", fontFamily: "monospace", color: "var(--text-tertiary)", marginBottom: "16px", textTransform: "uppercase" as const, letterSpacing: "1px" }}>What Veridex is</p>
+            <h2 style={{ fontSize: "clamp(22px,3.5vw,32px)", fontWeight: 700, marginBottom: "12px" }}>
+              Not a security scanner.<br />Trust middleware for agent commerce.
+            </h2>
+            <p style={{ fontSize: "15px", color: "var(--text-tertiary)", marginBottom: "36px", lineHeight: 1.7 }}>
+              Every action flows through Veridex before execution — intercepted, evaluated, logged to Hedera, and settled.
+            </p>
+            <div style={{ fontFamily: "monospace", fontSize: "14px", background: "#0d0d0f", border: "1px solid rgba(16,185,129,0.2)", borderRadius: "8px", padding: "20px 24px", lineHeight: 2.4, marginBottom: "32px" }}>
+              <span style={{ color: "var(--text-tertiary)" }}>agent</span>
+              {[["preflight","#f59e0b"],["decision","#10b981"],["execution","var(--text-secondary)"],["settlement","#818cf8"]].map(([label, color]) => (
+                <span key={label}><span style={{ color: "#333" }}> → </span><span style={{ color }}>{label}</span></span>
+              ))}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "16px" }}>
+              {[
+                { label: "Immutable attestation", sub: "Hedera HCS — every action, tamper-proof" },
+                { label: "Pre-execution blocking", sub: "dangerous behavior stopped before it runs" },
+                { label: "Portable reputation", sub: "ERC-8004 on-chain score, verifiable by any agent" },
+                { label: "Provable settlement", sub: "ERC-8183 earnings split with HCS pay stubs" },
+              ].map(c => (
+                <div key={c.label} style={{ padding: "16px", background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                  <div style={{ fontSize: "13px", fontWeight: 600, color: "#10b981", marginBottom: "6px" }}>{c.label}</div>
+                  <div style={{ fontSize: "12px", color: "var(--text-tertiary)", lineHeight: 1.6 }}>{c.sub}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── CORE MECHANISMS ──────────────────────────────────── */}
+        <section style={{ padding: "80px 24px", maxWidth: "900px", margin: "0 auto" }}>
+          <p style={{ fontSize: "12px", fontFamily: "monospace", color: "var(--text-tertiary)", marginBottom: "16px", textTransform: "uppercase" as const, letterSpacing: "1px" }}>Core system</p>
+          <h2 style={{ fontSize: "clamp(22px,3.5vw,30px)", fontWeight: 700, marginBottom: "52px" }}>Five mechanisms. No gaps.</h2>
+
+          <div style={{ display: "flex", flexDirection: "column" as const, gap: "48px" }}>
+
+            <div style={{ display: "flex", gap: "32px", alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 300px" }}>
+                <div style={{ fontSize: "11px", fontFamily: "monospace", color: "var(--text-tertiary)", marginBottom: "8px" }}>01</div>
+                <div style={{ fontSize: "17px", fontWeight: 700, marginBottom: "8px" }}>Pre-execution interception</div>
+                <p style={{ fontSize: "14px", color: "var(--text-tertiary)", lineHeight: 1.7 }}>Every tool call routed through a synchronous preflight. Decision returned before the action runs. No bypass.</p>
+              </div>
+              <div style={{ flex: "1 1 240px", fontFamily: "monospace", fontSize: "13px", background: "#0d0d0f", border: "1px solid var(--border)", borderRadius: "8px", padding: "16px 18px", lineHeight: 2 }}>
+                <div style={{ color: "#555", marginBottom: "6px" }}>POST /api/log</div>
+                <div><span style={{ color: "#10b981" }}>allowed: true</span><span style={{ color: "var(--text-tertiary)" }}> → proceed</span></div>
+                <div><span style={{ color: "#ef4444" }}>allowed: false</span><span style={{ color: "var(--text-tertiary)" }}> → abort</span></div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "32px", alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 300px" }}>
+                <div style={{ fontSize: "11px", fontFamily: "monospace", color: "var(--text-tertiary)", marginBottom: "8px" }}>02</div>
+                <div style={{ fontSize: "17px", fontWeight: 700, marginBottom: "8px" }}>Deterministic blocking engine</div>
+                <p style={{ fontSize: "14px", color: "var(--text-tertiary)", lineHeight: 1.7 }}>Pattern + behavioral detection. Evaluated synchronously before execution. Custom per-agent policies supported.</p>
+              </div>
+              <div style={{ flex: "1 1 240px", fontFamily: "monospace", fontSize: "12px", background: "#0d0d0f", border: "1px solid var(--border)", borderRadius: "8px", padding: "16px 18px", lineHeight: 2.1 }}>
+                {["credential access (/etc/shadow, keys)", "RCE (curl | bash, wget | sh)", "privilege escalation (/root/)", "anomaly bursts — loop detection", "custom policy per agent"].map(p => (
+                  <div key={p} style={{ color: "var(--text-tertiary)" }}>— {p}</div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "32px", alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 300px" }}>
+                <div style={{ fontSize: "11px", fontFamily: "monospace", color: "var(--text-tertiary)", marginBottom: "8px" }}>03</div>
+                <div style={{ fontSize: "17px", fontWeight: 700, marginBottom: "8px" }}>Immutable audit on Hedera HCS</div>
+                <p style={{ fontSize: "14px", color: "var(--text-tertiary)", lineHeight: 1.7 }}>Every action encrypted and appended to a per-agent topic. Final in 3–5 seconds. Externally verifiable. Independent of your infrastructure.</p>
+              </div>
+              <div style={{ flex: "1 1 240px", fontFamily: "monospace", fontSize: "13px", background: "#0d0d0f", border: "1px solid var(--border)", borderRadius: "8px", padding: "16px 18px", lineHeight: 2.1 }}>
+                {[["encrypted","AES-256-GCM per agent"],["appended","per-agent HCS topic"],["final","~3–5 seconds"],["verifiable","HashScan link on every log"]].map(([k,v]) => (
+                  <div key={k}><span style={{ color: "#10b981" }}>{k}</span><span style={{ color: "var(--text-tertiary)" }}>  {v}</span></div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "32px", alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 300px" }}>
+                <div style={{ fontSize: "11px", fontFamily: "monospace", color: "var(--text-tertiary)", marginBottom: "8px" }}>04</div>
+                <div style={{ fontSize: "17px", fontWeight: 700, marginBottom: "8px" }}>Deterministic recovery</div>
+                <p style={{ fontSize: "14px", color: "var(--text-tertiary)", lineHeight: 1.7 }}>On restart, one call reconstructs full operational state from HCS. Agent resumes from cryptographic truth — not local memory.</p>
+              </div>
+              <div style={{ flex: "1 1 240px", fontFamily: "monospace", fontSize: "13px", background: "#0d0d0f", border: "1px solid var(--border)", borderRadius: "8px", padding: "16px 18px", lineHeight: 2.1 }}>
+                <div style={{ color: "#555", marginBottom: "8px" }}>GET /v2/agent/:id/memory</div>
+                {["open jobs","blocked actions","pending earnings"].map(r => (
+                  <div key={r} style={{ color: "var(--text-tertiary)" }}>→ {r}</div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "32px", alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 300px" }}>
+                <div style={{ fontSize: "11px", fontFamily: "monospace", color: "var(--text-tertiary)", marginBottom: "8px" }}>05</div>
+                <div style={{ fontSize: "17px", fontWeight: 700, marginBottom: "8px" }}>Provable earnings settlement</div>
+                <p style={{ fontSize: "14px", color: "var(--text-tertiary)", lineHeight: 1.7 }}>ERC-8183 job earnings split automatically via HTS, logged to HCS as a cryptographic pay stub. Any agent or developer can verify every payment.</p>
+              </div>
+              <div style={{ flex: "1 1 240px", fontFamily: "monospace", fontSize: "13px", background: "#0d0d0f", border: "1px solid var(--border)", borderRadius: "8px", padding: "16px 18px", lineHeight: 2.1 }}>
+                <div style={{ color: "var(--text-secondary)", marginBottom: "8px" }}>ℏ → dev / ops / reinvest</div>
+                {[["split","via HTS transfer"],["logged","to HCS topic"],["pay stub","verifiable on HashScan"]].map(([k,v]) => (
+                  <div key={k}><span style={{ color: "#10b981" }}>{k}</span><span style={{ color: "var(--text-tertiary)" }}>  {v}</span></div>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        {/* ── WHY HEDERA ───────────────────────────────────────── */}
+        <section style={{ borderTop: "1px solid var(--border)", padding: "72px 24px" }}>
+          <div style={{ maxWidth: "640px", margin: "0 auto" }}>
+            <p style={{ fontSize: "12px", fontFamily: "monospace", color: "var(--text-tertiary)", marginBottom: "16px", textTransform: "uppercase" as const, letterSpacing: "1px" }}>Why Hedera</p>
+            <h2 style={{ fontSize: "clamp(20px,3vw,26px)", fontWeight: 700, marginBottom: "10px" }}>
+              Per-action attestation only works at this cost.
+            </h2>
+            <p style={{ fontSize: "14px", color: "var(--text-tertiary)", marginBottom: "32px", lineHeight: 1.7 }}>
+              Agent-scale logging isn&apos;t viable on other chains. Hedera is the only network where $0.0008 per message + 3–5s finality makes this economically sane.
+            </p>
+            <div style={{ border: "1px solid var(--border)", borderRadius: "8px", overflow: "hidden", fontFamily: "monospace", fontSize: "13px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderBottom: "1px solid var(--border)", padding: "10px 16px", background: "#111113", color: "var(--text-tertiary)", fontSize: "11px", textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>
+                <span>Network</span><span style={{ textAlign: "right" as const }}>100 actions / day</span><span />
+              </div>
+              {[
+                { network: "Ethereum", cost: "$300 – $5,000", note: "", dim: true },
+                { network: "Solana",   cost: "~$2.50",        note: "", dim: true },
+                { network: "Hedera",   cost: "$0.08",         note: "← only viable option", dim: false },
+              ].map(r => (
+                <div key={r.network} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.04)", background: r.dim ? "transparent" : "rgba(16,185,129,0.04)", alignItems: "center" }}>
+                  <span style={{ color: r.dim ? "var(--text-tertiary)" : "var(--text-primary)" }}>{r.network}</span>
+                  <span style={{ textAlign: "right" as const, color: r.dim ? "var(--text-tertiary)" : "#10b981", fontWeight: r.dim ? 400 : 700 }}>{r.cost}</span>
+                  <span style={{ textAlign: "right" as const, fontSize: "11px", color: "#10b981" }}>{r.note}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── INSTALL ──────────────────────────────────────────── */}
+        <section style={{ borderTop: "1px solid var(--border)", padding: "72px 24px" }}>
+          <div style={{ maxWidth: "560px", margin: "0 auto" }}>
+            <p style={{ fontSize: "12px", fontFamily: "monospace", color: "var(--text-tertiary)", marginBottom: "16px", textTransform: "uppercase" as const, letterSpacing: "1px" }}>Get started</p>
+            <h2 style={{ fontSize: "clamp(20px,3vw,26px)", fontWeight: 700, marginBottom: "10px" }}>30 seconds to install</h2>
+            <p style={{ fontSize: "14px", color: "var(--text-tertiary)", marginBottom: "24px" }}>Add one line to your OpenClaw config.</p>
+            <div style={{ position: "relative", background: "#0d0d0f", border: "1px solid var(--border)", borderRadius: "8px", padding: "18px 20px", marginBottom: "20px" }}>
+              <pre style={{ margin: 0, fontFamily: "monospace", fontSize: "14px", color: "var(--text-secondary)", lineHeight: 1.7 }}>{snippet}</pre>
+              <button onClick={copy} style={{ position: "absolute", top: "10px", right: "10px", background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "5px", padding: "3px 10px", fontSize: "11px", color: "var(--text-tertiary)", cursor: "pointer" }}>
+                {copied ? "✓ Copied" : "Copy"}
+              </button>
+            </div>
+            <div style={{ fontFamily: "monospace", fontSize: "13px", color: "var(--text-tertiary)", lineHeight: 2.2 }}>
+              <span style={{ color: "#10b981" }}>→</span> all actions intercepted and logged to Hedera<br />
+              <span style={{ color: "#10b981" }}>→</span> unsafe behavior blocked before execution<br />
+              <span style={{ color: "#10b981" }}>→</span> agent appears in dashboard immediately
+            </div>
+          </div>
+        </section>
+
+        {/* ── CLOSING CTA ──────────────────────────────────────── */}
+        <section style={{ borderTop: "1px solid var(--border)", padding: "80px 24px 100px", maxWidth: "700px", margin: "0 auto", textAlign: "center" }}>
+          <h2 style={{ fontSize: "clamp(22px,4vw,34px)", fontWeight: 800, lineHeight: 1.2, marginBottom: "16px", letterSpacing: "-0.5px" }}>
+            You are building more than<br />an agent security tool.
+          </h2>
+          <p style={{ fontSize: "16px", color: "var(--text-secondary)", lineHeight: 1.75, marginBottom: "8px" }}>
+            You are building trust middleware for agent commerce.
+          </p>
+          <p style={{ fontSize: "15px", color: "var(--text-tertiary)", lineHeight: 1.75, marginBottom: "44px" }}>
+            Immutable attestations. Pre-execution policy. Portable reputation. Provable settlement.
+            The primitives agent economies need to function.
+          </p>
+          <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
+            <Link href="/dashboard" style={{ background: "#10b981", border: "none", borderRadius: "8px", padding: "13px 28px", fontSize: "15px", fontWeight: 700, color: "#000", textDecoration: "none", display: "inline-block" }}>
+              Launch Dashboard
+            </Link>
+            <Link href="/leaderboard" style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", padding: "13px 28px", fontSize: "15px", fontWeight: 500, color: "var(--text-primary)", textDecoration: "none", display: "inline-block" }}>
+              View Live System
+            </Link>
+            <button onClick={connect} disabled={isConnecting} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", padding: "13px 28px", fontSize: "15px", fontWeight: 500, color: "var(--text-primary)", cursor: "pointer", opacity: isConnecting ? 0.7 : 1 }}>
+              {isConnecting ? "Connecting..." : "Install Skill"}
+            </button>
+          </div>
+        </section>
+
+        {/* ── FOOTER ───────────────────────────────────────────── */}
         <footer style={{ borderTop: "1px solid var(--border)", padding: "28px 24px" }}>
           <div style={{ maxWidth: "1200px", margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--text-tertiary)", fontSize: "14px" }}>
-              <Logo size={15} /> <span>Veridex — ETHDenver 2026</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--text-tertiary)", fontSize: "13px" }}>
+              <Logo size={14} /> <span>Veridex — ETHDenver 2026</span>
             </div>
             <div style={{ display: "flex", gap: "24px" }}>
               {[["Dashboard","/dashboard"],["Leaderboard","/leaderboard"],["skill.md","/skill.md"],["HashScan","https://hashscan.io/testnet"]].map(([label,href]) => (
@@ -361,8 +406,11 @@ export default function LandingPage() {
             </div>
           </div>
         </footer>
+
       </main>
-      <style>{`@keyframes livepulse { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
+      <style>{`
+        @keyframes livepulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+      `}</style>
     </>
   );
 }
