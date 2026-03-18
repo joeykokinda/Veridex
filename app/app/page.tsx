@@ -104,7 +104,7 @@ const CALLS = [
 ];
 function DecisionDemo() {
   const [idx, setIdx] = useState(0);
-  const [ph, setPh] = useState<0|1|2>(0); // 0 incoming 1 eval 2 result
+  const [ph, setPh] = useState<0|1|2>(0);
   useEffect(() => {
     setPh(0);
     const t1=setTimeout(()=>setPh(1), 700);
@@ -113,17 +113,38 @@ function DecisionDemo() {
     return ()=>[t1,t2,t3].forEach(clearTimeout);
   }, [idx]);
   const d = CALLS[idx];
+  const ok = d.ok;
   return (
     <div className="ademo">
-      <div className="ademo-label">POST /api/log</div>
-      <div style={{ fontFamily:"monospace", fontSize:"13px", lineHeight:2 }}>
-        <div style={{ color:"var(--text-tertiary)" }}>tool: <span style={{ color:"#818cf8" }}>{d.tool}</span></div>
-        <div style={{ color:"var(--text-tertiary)" }}>params: <span style={{ color:"#a3a3a3" }}>{d.params}</span></div>
-        <div style={{ minHeight:"44px", paddingTop:"4px" }}>
-          {ph===1&&<div style={{ color:"#f59e0b" }}>▶ evaluating<span className="blink">…</span></div>}
-          {ph===2&&(d.ok
-            ? <div style={{ color:"#10b981" }}>✓ allowed: true &nbsp;risk: {d.risk}</div>
-            : <><div style={{ color:"#ef4444" }}>✗ allowed: false</div><div style={{ color:"#fca5a5" }}>&nbsp; reason: {d.why}</div></>
+      <div className="ademo-label">pre-execution gate</div>
+      <div style={{ display:"flex", flexDirection:"column", gap:"8px", paddingTop:"4px" }}>
+        {/* Tool call node */}
+        <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+          <div style={{ width:6, height:6, borderRadius:"50%", background:"#818cf8", flexShrink:0 }}/>
+          <div style={{ padding:"5px 10px", borderRadius:"6px", background:"rgba(129,140,248,0.1)", border:"1px solid rgba(129,140,248,0.25)", fontFamily:"monospace", fontSize:"12px", color:"#818cf8", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const, flex:1 }}>
+            {d.tool}({d.params.replace(/"/g,"")})
+          </div>
+        </div>
+        {/* Connector */}
+        <div style={{ display:"flex", alignItems:"center", gap:"8px", paddingLeft:"2px" }}>
+          <div style={{ width:6, display:"flex", justifyContent:"center" }}>
+            <div style={{ width:1, height:16, background:"rgba(255,255,255,0.1)" }}/>
+          </div>
+          {ph===1 && <span style={{ fontSize:"10px", color:"#f59e0b", fontFamily:"monospace" }}>evaluating<span className="blink">…</span></span>}
+        </div>
+        {/* Result node */}
+        <div style={{ display:"flex", alignItems:"center", gap:"8px", minHeight:"30px" }}>
+          <div style={{ width:6, height:6, borderRadius:"50%", background:ph===2?(ok?"#10b981":"#ef4444"):"rgba(255,255,255,0.1)", flexShrink:0, transition:"background 0.3s" }}/>
+          {ph===2 && (
+            <div className="la" style={{ padding:"5px 12px", borderRadius:"6px", fontFamily:"monospace", fontSize:"12px", fontWeight:600, flex:1,
+              background: ok ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)",
+              border: `1px solid ${ok ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
+              color: ok ? "#10b981" : "#ef4444",
+              display:"flex", gap:"8px"
+            }}>
+              <span>{ok ? "✓" : "✗"}</span>
+              <span>{ok ? `allowed · risk: ${d.risk}` : `blocked · ${d.why}`}</span>
+            </div>
           )}
         </div>
       </div>
@@ -138,6 +159,7 @@ const BLOCK_CASES = [
   { cmd:"ls /root/secrets",          hit:2 },
 ];
 const RULES = ["credential access  (/etc/shadow, keys)","RCE                (curl|bash, wget|sh)","priv escalation    (/root/, sudo)","loop detection     (20+ same/60s)","custom policy      (per-agent)"];
+const RULE_LABELS = ["credential access","RCE (curl|bash)","priv escalation","loop detection","custom policy"];
 function BlockingDemo() {
   const ci = useCycle(BLOCK_CASES.length, 3800);
   const [ri, setRi] = useState(-1);
@@ -153,14 +175,31 @@ function BlockingDemo() {
   const ex = BLOCK_CASES[ci];
   return (
     <div className="ademo">
-      <div className="ademo-label">blocking engine</div>
-      <div style={{ fontFamily:"monospace", fontSize:"13px", lineHeight:1.85 }}>
-        <div style={{ color:"#fca5a5", marginBottom:"6px" }}>$ {ex.cmd}</div>
-        {RULES.map((r,i)=>{
-          const checked=ri>=i, matched=done&&i===ex.hit;
-          return <div key={r} style={{ color:matched?"#ef4444":checked?"var(--text-tertiary)":"#252525", transition:"color 0.2s" }}>{checked?(matched?"✓":"—"):"·"} {r}</div>;
+      <div className="ademo-label" style={{ display:"flex", justifyContent:"space-between" }}>
+        <span>blocking engine</span>
+        {done && <span style={{ color:"#ef4444", fontWeight:700, fontSize:"10px" }}>BLOCKED</span>}
+      </div>
+      {/* Command pill */}
+      <div style={{ padding:"4px 8px", borderRadius:"5px", background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.18)", fontFamily:"monospace", fontSize:"11px", color:"#fca5a5", marginBottom:"8px" }}>$ {ex.cmd}</div>
+      {/* Rule rows */}
+      <div style={{ display:"flex", flexDirection:"column", gap:"5px" }}>
+        {RULE_LABELS.map((label, i) => {
+          const checked = ri >= i, matched = done && i === ex.hit;
+          return (
+            <div key={label} style={{ display:"flex", alignItems:"center", gap:"7px" }}>
+              <div style={{ width:14, height:14, borderRadius:"3px", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"9px", fontWeight:700, transition:"all 0.25s",
+                background: matched ? "rgba(239,68,68,0.15)" : checked ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.03)",
+                border: `1px solid ${matched ? "rgba(239,68,68,0.4)" : checked ? "rgba(16,185,129,0.2)" : "rgba(255,255,255,0.06)"}`,
+                color: matched ? "#ef4444" : "#10b981",
+              }}>
+                {matched ? "✗" : checked ? "✓" : ""}
+              </div>
+              <span style={{ fontFamily:"monospace", fontSize:"11px", transition:"color 0.2s",
+                color: matched ? "#ef4444" : checked ? "var(--text-tertiary)" : "#2a2a2a",
+              }}>{label}</span>
+            </div>
+          );
         })}
-        {done&&<div style={{ color:"#ef4444", marginTop:"6px", fontWeight:700 }}>→ BLOCKED</div>}
       </div>
     </div>
   );
@@ -176,14 +215,32 @@ function HCSDemo() {
     const ts=[900,1600,2400,3100].map((d,i)=>setTimeout(()=>setPh(i+1),d));
     return()=>ts.forEach(clearTimeout);
   },[tick]);
+  const steps = [
+    { n:1, label:'action logged', sub:'{ action, risk, agentId }', color:"#818cf8", active: ph>=1 },
+    { n:2, label:'AES-256-GCM', sub: ph===2 ? 'encrypting…' : 'encrypted', color:"#f59e0b", active: ph>=2 },
+    { n:3, label:'HCS submitted', sub: ph>=3 ? 'topic 0.0.8228693 · seq #1848' : '…', color:"#818cf8", active: ph>=3 },
+    { n:4, label:'finality', sub: ph>=4 ? '✓ 3.2s — verifiable on HashScan' : '…', color:"#10b981", active: ph>=4 },
+  ];
   return (
     <div className="ademo">
       <div className="ademo-label">Hedera HCS audit</div>
-      <div style={{ fontFamily:"monospace", fontSize:"13px", lineHeight:2 }}>
-        <div style={{ color:ph>=1?"#818cf8":"#a3a3a3", transition:"color 0.3s" }}>{ph<2?'{"action":"file_read","risk":"low"}':"eCfR+2nX8kBvQ…AES-GCM…9xZp=="}</div>
-        <div style={{ color:ph>=1?"#f59e0b":"#252525", transition:"color 0.3s" }}>↓ AES-256-GCM{ph===1&&<span className="blink"> encrypting…</span>}</div>
-        <div style={{ color:ph>=3?"var(--text-tertiary)":"#252525", transition:"color 0.3s" }}>topic: 0.0.8228693 · seq: {ph>=3?"1848":"—"}</div>
-        <div style={{ color:ph>=4?"#10b981":"#252525", transition:"color 0.3s" }}>✓ final in {ph>=4?"3.2s":"…"}</div>
+      <div style={{ display:"flex", flexDirection:"column", gap:"0" }}>
+        {steps.map((s, i) => (
+          <div key={s.n} style={{ display:"flex", gap:"10px", alignItems:"stretch" }}>
+            {/* Spine */}
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", width:16, flexShrink:0 }}>
+              <div style={{ width:12, height:12, borderRadius:"50%", border:`1.5px solid ${s.active ? s.color : "rgba(255,255,255,0.1)"}`, background: s.active ? `${s.color}22` : "transparent", display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.3s", marginTop:"8px" }}>
+                {s.active && <div style={{ width:4, height:4, borderRadius:"50%", background:s.color }}/>}
+              </div>
+              {i < steps.length-1 && <div style={{ width:1, flex:1, background: s.active ? `${s.color}33` : "rgba(255,255,255,0.05)", marginTop:"2px", marginBottom:"2px", transition:"background 0.3s" }}/>}
+            </div>
+            {/* Content */}
+            <div style={{ paddingBottom: i < steps.length-1 ? "6px" : "0", paddingTop:"6px" }}>
+              <div style={{ fontFamily:"monospace", fontSize:"11px", fontWeight:600, color: s.active ? s.color : "#2a2a2a", transition:"color 0.3s" }}>{s.label}</div>
+              <div style={{ fontFamily:"monospace", fontSize:"10px", color: s.active ? "var(--text-tertiary)" : "#222", transition:"color 0.3s" }}>{s.sub}{s.n===2 && ph===2 && <span className="blink">…</span>}</div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -222,6 +279,11 @@ function RecoveryDemo() {
 }
 
 // Earnings split
+const SPLITS = [
+  { label:"dev",     pct:60, hbar:1.920, color:"#10b981" },
+  { label:"ops",     pct:30, hbar:0.960, color:"#f59e0b" },
+  { label:"reinvest",pct:10, hbar:0.320, color:"#818cf8" },
+];
 function SplitDemo() {
   const [ph, setPh] = useState(0);
   const [tick, setTick] = useState(0);
@@ -234,13 +296,28 @@ function SplitDemo() {
   return (
     <div className="ademo">
       <div className="ademo-label">earnings settlement</div>
-      <div style={{ fontFamily:"monospace", fontSize:"13px", lineHeight:2.1 }}>
-        <div style={{ color:ph>=1?"#10b981":"#252525", transition:"color 0.3s", fontWeight:ph>=1?700:400 }}>job #1847: 3.2 ℏ received</div>
-        <div style={{ color:ph>=2?"#555":"#252525", transition:"color 0.3s" }}>↓ HTS auto-split</div>
-        <div style={{ color:ph>=3?"#10b981":"#252525", transition:"color 0.3s" }}>├─ 1.920 ℏ → dev wallet</div>
-        <div style={{ color:ph>=3?"#f59e0b":"#252525", transition:"color 0.3s" }}>├─ 0.960 ℏ → ops budget</div>
-        <div style={{ color:ph>=3?"#818cf8":"#252525", transition:"color 0.3s" }}>└─ 0.320 ℏ → reinvest</div>
-        <div style={{ color:ph>=3?"#444":"#252525", transition:"color 0.4s", transitionDelay:"0.2s" }}>pay stub → HCS seq #1849</div>
+      <div style={{ paddingTop:"2px" }}>
+        {/* Job income */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"10px" }}>
+          <span style={{ fontFamily:"monospace", fontSize:"11px", color:"var(--text-tertiary)" }}>job #1847</span>
+          <span style={{ fontFamily:"monospace", fontSize:"16px", fontWeight:700, color:ph>=1?"#10b981":"#2a2a2a", transition:"color 0.35s" }}>3.2 ℏ</span>
+        </div>
+        {/* Split bars */}
+        {SPLITS.map((s, i) => (
+          <div key={s.label} style={{ marginBottom:"7px" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"3px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+                <div style={{ width:6, height:6, borderRadius:"1px", background:ph>=3?s.color:"#2a2a2a", transition:"background 0.3s", flexShrink:0 }}/>
+                <span style={{ fontFamily:"monospace", fontSize:"10px", color:ph>=3?s.color:"#333", transition:"color 0.3s" }}>{s.label}</span>
+              </div>
+              <span style={{ fontFamily:"monospace", fontSize:"10px", color:ph>=3?s.color:"#333", transition:"color 0.3s" }}>{s.hbar.toFixed(3)} ℏ</span>
+            </div>
+            <div style={{ height:"3px", background:"rgba(255,255,255,0.04)", borderRadius:"2px", overflow:"hidden" }}>
+              <div style={{ height:"100%", borderRadius:"2px", background:s.color, transition:`width 0.8s ease ${i*100}ms`, width:ph>=3?`${s.pct}%`:"0%" }}/>
+            </div>
+          </div>
+        ))}
+        {ph>=3 && <div style={{ fontFamily:"monospace", fontSize:"10px", color:"#444", marginTop:"4px" }}>pay stub → HCS seq #1849</div>}
       </div>
     </div>
   );
@@ -259,13 +336,32 @@ function VaultDemo() {
   return (
     <div className="ademo">
       <div className="ademo-label">secrets vault</div>
-      <div style={{ fontFamily:"monospace", fontSize:"13px", lineHeight:2 }}>
-        <div style={{ color:ph>=1?"var(--text-tertiary)":"#252525", transition:"color 0.3s" }}>store: OPENAI_KEY = sk-proj…</div>
-        <div style={{ color:ph>=2?"#818cf8":"#252525", transition:"color 0.3s" }}>vsec_8f2a1c… ✓ encrypted</div>
-        <div style={{ height:"4px" }}/>
-        <div style={{ color:ph>=3?"var(--text-tertiary)":"#252525", transition:"color 0.3s" }}>request: secretType=openai</div>
-        <div style={{ color:ph>=4?"#f59e0b":"#252525", transition:"color 0.3s" }}>token: vtk_7e9b… (60s, 1-use)</div>
-        <div style={{ color:ph>=5?"#10b981":"#252525", transition:"color 0.3s" }}>✓ consumed on use</div>
+      <div style={{ paddingTop:"2px" }}>
+        {/* Store row */}
+        <div style={{ display:"flex", alignItems:"center", gap:"6px", marginBottom:"6px", opacity:ph>=1?1:0.12, transition:"opacity 0.3s" }}>
+          <div style={{ padding:"4px 8px", borderRadius:"5px", fontFamily:"monospace", fontSize:"10px", color:"var(--text-tertiary)", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.07)", whiteSpace:"nowrap" as const }}>OPENAI_KEY = sk-proj…</div>
+          <span style={{ color:"rgba(255,255,255,0.15)", fontSize:"12px" }}>→</span>
+          <div style={{ padding:"4px 8px", borderRadius:"5px", fontFamily:"monospace", fontSize:"10px", transition:"all 0.3s",
+            color:ph>=2?"#818cf8":"#2a2a2a",
+            background:ph>=2?"rgba(129,140,248,0.08)":"rgba(255,255,255,0.02)",
+            border:`1px solid ${ph>=2?"rgba(129,140,248,0.2)":"rgba(255,255,255,0.04)"}` }}>
+            {ph>=2 ? "vsec_8f2a… ✓" : "encrypting…"}
+          </div>
+        </div>
+        <div style={{ height:"1px", background:"rgba(255,255,255,0.04)", margin:"8px 0" }}/>
+        {/* Request row */}
+        <div style={{ opacity:ph>=3?1:0.12, transition:"opacity 0.3s" }}>
+          <div style={{ fontFamily:"monospace", fontSize:"10px", color:"var(--text-tertiary)", marginBottom:"5px" }}>request: secretType=openai</div>
+          <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+            <div style={{ padding:"4px 10px", borderRadius:"5px", fontFamily:"monospace", fontSize:"10px", transition:"all 0.3s",
+              color:ph>=4?"#f59e0b":"#2a2a2a",
+              background:ph>=4?"rgba(245,158,11,0.08)":"rgba(255,255,255,0.02)",
+              border:`1px solid ${ph>=4?"rgba(245,158,11,0.2)":"rgba(255,255,255,0.04)"}` }}>
+              vtk_7e9b… · 60s · 1-use
+            </div>
+            {ph>=5 && <span style={{ fontFamily:"monospace", fontSize:"10px", color:"#10b981" }}>✓ consumed</span>}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -345,6 +441,13 @@ function ReputationDemo() {
 }
 
 // Identity proof / auto-wallet
+const ID_STEPS = [
+  { label:"challenge issued",        detail:"8f2a1b9c… · 5s window", color:"var(--text-tertiary)" },
+  { label:"agent signed in 47ms",    detail:"human min: ~200ms impossible", color:"#f59e0b" },
+  { label:"proof verified",          detail:"automated execution confirmed", color:"#10b981" },
+  { label:"wallet 0x53f7… funded",   detail:"2 HBAR via faucet", color:"#818cf8" },
+  { label:"verifiedMachineAgent",    detail:"registered on-chain ✓", color:"#10b981" },
+];
 function IdentityDemo() {
   const [ph, setPh] = useState(0);
   const [tick, setTick] = useState(0);
@@ -357,12 +460,23 @@ function IdentityDemo() {
   return (
     <div className="ademo">
       <div className="ademo-label">identity proof + auto-wallet</div>
-      <div style={{ fontFamily:"monospace", fontSize:"13px", lineHeight:2 }}>
-        <div style={{ color:ph>=1?"var(--text-tertiary)":"#252525", transition:"color 0.3s" }}>challenge: 8f2a1b9c…  ⏱ 5s</div>
-        <div style={{ color:ph>=2?"#f59e0b":"#252525",            transition:"color 0.3s" }}>agent signing…</div>
-        <div style={{ color:ph>=3?"#10b981":"#252525",            transition:"color 0.3s" }}>signed in 47ms ✓ &nbsp;(human: impossible)</div>
-        <div style={{ color:ph>=4?"#818cf8":"#252525",            transition:"color 0.3s" }}>wallet: 0x53f7… (generated + funded)</div>
-        <div style={{ color:ph>=5?"#10b981":"#252525",            transition:"color 0.3s" }}>✓ verifiedMachineAgent on-chain</div>
+      <div style={{ display:"flex", flexDirection:"column", gap:"0", paddingTop:"2px" }}>
+        {ID_STEPS.map((s, i) => (
+          <div key={s.label} style={{ display:"flex", gap:"8px", alignItems:"stretch" }}>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", width:14, flexShrink:0 }}>
+              <div style={{ width:8, height:8, borderRadius:"50%", marginTop:"6px", flexShrink:0, transition:"all 0.3s",
+                background: ph>i ? s.color : "rgba(255,255,255,0.08)",
+                boxShadow: ph>i ? `0 0 6px ${s.color}66` : "none",
+              }}/>
+              {i < ID_STEPS.length-1 && <div style={{ width:1, flex:1, marginTop:"2px", marginBottom:"2px", transition:"background 0.3s",
+                background: ph>i ? `${s.color}44` : "rgba(255,255,255,0.05)" }}/>}
+            </div>
+            <div style={{ paddingBottom: i < ID_STEPS.length-1 ? "5px" : "0", paddingTop:"3px", opacity: ph>i ? 1 : 0.14, transition:"opacity 0.35s" }}>
+              <div style={{ fontFamily:"monospace", fontSize:"11px", fontWeight:500, color: ph>i ? s.color : "#2a2a2a", transition:"color 0.3s" }}>{s.label}</div>
+              <div style={{ fontFamily:"monospace", fontSize:"10px", color:"#444" }}>{s.detail}</div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -419,62 +533,56 @@ function CostTable() {
   );
 }
 
+// ── SVG Icons ─────────────────────────────────────────────────────────────────
+function SvgWrap({ children }: { children: React.ReactNode }) {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
+}
+function IZap()    { return <SvgWrap><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></SvgWrap>; }
+function IShield() { return <SvgWrap><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></SvgWrap>; }
+function ILink()   { return <SvgWrap><path d="M15 7h3a5 5 0 0 1 5 5 5 5 0 0 1-5 5h-3m-6 0H6a5 5 0 0 1-5-5 5 5 0 0 1 5-5h3"/><line x1="8" y1="12" x2="16" y2="12"/></SvgWrap>; }
+function IRefresh(){ return <SvgWrap><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/></SvgWrap>; }
+function ICoins()  { return <SvgWrap><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><line x1="16.71" y1="13.88" x2="17.7" y2="13.88"/></SvgWrap>; }
+function ILock()   { return <SvgWrap><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></SvgWrap>; }
+function IChart()  { return <SvgWrap><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></SvgWrap>; }
+function ICpu()    { return <SvgWrap><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></SvgWrap>; }
+function ISend()   { return <SvgWrap><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></SvgWrap>; }
+function ISliders(){ return <SvgWrap><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></SvgWrap>; }
+function IBell()   { return <SvgWrap><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></SvgWrap>; }
+
 // ── Bento card ────────────────────────────────────────────────────────────────
-function BCard({ num, title, body, demo, icon, bigIcon, variant="dark", style: s={} }: {
+function BCard({ num, title, body, demo, icon, style: s={} }: {
   num: string; title: string; body: string;
   demo?: React.ReactNode;
-  icon?: string;
+  icon?: React.ReactNode;
   bigIcon?: string;
-  variant?: "dark" | "light";
+  variant?: string;
   style?: React.CSSProperties;
 }) {
   const { ref, v } = useReveal(0.06);
-  const isDark = variant === "dark";
   return (
     <div ref={ref} className={v?"bcard bcard-in":"bcard"} style={{
-      background: isDark ? "#0a0a0b" : "#f4f4f5",
-      border: `1px solid ${isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)"}`,
-      borderRadius: "20px", padding: "28px",
-      display: "flex", flexDirection: "column" as const, gap: "16px",
-      position: "relative", overflow: "hidden",
+      background: "#09090b",
+      border: "1px solid var(--border)",
+      borderRadius: "16px", padding: "24px",
+      display: "flex", flexDirection: "column" as const, gap: "14px",
       ...s
     }}>
-      {/* Small icon badge */}
       {icon && (
         <div style={{
-          width: 42, height: 42, borderRadius: "12px", flexShrink: 0,
-          background: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)",
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px",
+          width: 36, height: 36, borderRadius: "8px", flexShrink: 0,
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(255,255,255,0.07)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "var(--text-secondary)",
         }}>
           {icon}
         </div>
       )}
-      {/* Large background watermark */}
-      {bigIcon && (
-        <div style={{
-          position: "absolute", right: "20px", top: "20px",
-          fontSize: "100px", lineHeight: 1, userSelect: "none" as const,
-          opacity: isDark ? 0.07 : 0.06, pointerEvents: "none" as const,
-        }}>
-          {bigIcon}
-        </div>
-      )}
-      {/* Demo */}
       {demo && <div style={{ flex: 1 }}>{demo}</div>}
-      {/* Text at bottom */}
       <div style={{ marginTop: "auto" }}>
-        <div style={{ fontSize: "10px", fontFamily: "monospace", letterSpacing: "0.5px", marginBottom: "6px",
-          color: isDark ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.3)" }}>
-          {num}
-        </div>
-        <div style={{ fontSize: "17px", fontWeight: 700, marginBottom: "8px", lineHeight: 1.2,
-          color: isDark ? "#fff" : "#0a0a0b" }}>
-          {title}
-        </div>
-        <p style={{ fontSize: "13px", lineHeight: 1.7, margin: 0,
-          color: isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.5)" }}>
-          {body}
-        </p>
+        <div style={{ fontSize: "10px", fontFamily: "monospace", letterSpacing: "0.5px", marginBottom: "6px", color: "var(--text-tertiary)" }}>{num}</div>
+        <div style={{ fontSize: "17px", fontWeight: 700, marginBottom: "8px", lineHeight: 1.2, color: "var(--text-primary)" }}>{title}</div>
+        <p style={{ fontSize: "13px", lineHeight: 1.7, margin: 0, color: "var(--text-tertiary)" }}>{body}</p>
       </div>
     </div>
   );
@@ -539,15 +647,17 @@ export default function LandingPage() {
       <main>
 
         {/* ── HERO ─────────────────────────────────────────────────────────── */}
-        <section style={{ padding:"136px 24px 56px", maxWidth:"820px", margin:"0 auto", textAlign:"center" }}>
-          <h1 style={{ fontSize:"clamp(34px,5.5vw,56px)", fontWeight:800, lineHeight:1.08, letterSpacing:"-1.5px", marginBottom:"20px" }}>
-            Trust infrastructure<br /><span style={{ color:"#10b981" }}>for autonomous agents</span>
-          </h1>
-          <p style={{ fontSize:"18px", color:"var(--text-secondary)", lineHeight:1.7, marginBottom:"6px", maxWidth:"560px", margin:"0 auto 6px" }}>Agents can earn, spend, coordinate, and execute.</p>
-          <p style={{ fontSize:"17px", color:"var(--text-tertiary)", lineHeight:1.7, marginBottom:"32px", maxWidth:"560px", margin:"0 auto 32px" }}>Without Veridex, none of it is safe or verifiable.</p>
-          <div style={{ display:"flex", gap:"12px", justifyContent:"center", flexWrap:"wrap" }}>
-            <Link href="/dashboard" style={{ background:"#10b981", borderRadius:"8px", padding:"12px 26px", fontSize:"15px", fontWeight:700, color:"#000", textDecoration:"none" }}>Open Dashboard</Link>
-            <Link href="/leaderboard" style={{ background:"transparent", border:"1px solid var(--border)", borderRadius:"8px", padding:"12px 26px", fontSize:"15px", fontWeight:500, color:"var(--text-primary)", textDecoration:"none" }}>View Live Feed</Link>
+        <section style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:"80px 24px" }}>
+          <div style={{ maxWidth:"820px", textAlign:"center" }}>
+            <h1 style={{ fontSize:"clamp(34px,5.5vw,56px)", fontWeight:800, lineHeight:1.08, letterSpacing:"-1.5px", marginBottom:"20px" }}>
+              Trust infrastructure<br /><span style={{ color:"#10b981" }}>for autonomous agents</span>
+            </h1>
+            <p style={{ fontSize:"18px", color:"var(--text-secondary)", lineHeight:1.7, maxWidth:"560px", margin:"0 auto 6px" }}>Agents can earn, spend, coordinate, and execute.</p>
+            <p style={{ fontSize:"17px", color:"var(--text-tertiary)", lineHeight:1.7, maxWidth:"560px", margin:"0 auto 32px" }}>Without Veridex, none of it is safe or verifiable.</p>
+            <div style={{ display:"flex", gap:"12px", justifyContent:"center", flexWrap:"wrap" }}>
+              <Link href="/dashboard" style={{ background:"#10b981", borderRadius:"8px", padding:"12px 26px", fontSize:"15px", fontWeight:700, color:"#000", textDecoration:"none" }}>Open Dashboard</Link>
+              <Link href="/leaderboard" style={{ background:"transparent", border:"1px solid var(--border)", borderRadius:"8px", padding:"12px 26px", fontSize:"15px", fontWeight:500, color:"var(--text-primary)", textDecoration:"none" }}>View Live Feed</Link>
+            </div>
           </div>
         </section>
 
@@ -619,17 +729,15 @@ export default function LandingPage() {
           <p style={{ fontSize:"11px", fontFamily:"monospace", color:"var(--text-tertiary)", marginBottom:"12px", textTransform:"uppercase" as const, letterSpacing:"1px" }}>What Veridex provides</p>
           <h2 style={{ fontSize:"clamp(20px,3.5vw,28px)", fontWeight:700, marginBottom:"40px" }}>Eleven capabilities. One install.</h2>
 
-          {/* Row 1: interception (wide) + blocking */}
+          {/* Row 1: interception + blocking */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px", marginBottom:"14px" }}>
             <BCard num="01 — control plane" title="Pre-execution interception"
               body="Every tool call routes through a synchronous check before it runs. Returns allowed: true or allowed: false. No async, no retry — the agent cannot proceed without a verdict."
-              demo={<DecisionDemo />}
-              icon="⚡" variant="light"
+              demo={<DecisionDemo />} icon={<IZap/>}
             />
             <BCard num="02 — control plane" title="Multi-layer blocking engine"
               body="Credential access, RCE, privilege escalation, loop detection (20+ identical actions / 60s), and custom per-agent rules. All evaluated synchronously. All blocks logged to HCS."
-              demo={<BlockingDemo />}
-              icon="🔒" bigIcon="🛡️" variant="dark"
+              demo={<BlockingDemo />} icon={<IShield/>}
             />
           </div>
 
@@ -637,13 +745,11 @@ export default function LandingPage() {
           <div style={{ display:"grid", gridTemplateColumns:"3fr 2fr", gap:"14px", marginBottom:"14px" }}>
             <BCard num="03 — hedera" title="AES-256-GCM encrypted HCS audit"
               body="Every action encrypted with a per-agent key, appended to a Hedera HCS topic, final in 3–5 seconds. The plaintext never leaves your orchestrator. Tamper-proof. Verifiable on HashScan."
-              demo={<HCSDemo />}
-              icon="🔗" bigIcon="⛓️" variant="dark"
+              demo={<HCSDemo />} icon={<ILink/>}
             />
             <BCard num="04 — hedera" title="Deterministic crash recovery"
               body="On restart, one call reads the HCS topic via Mirror Node and reconstructs complete state: open jobs, blocked actions, pending earnings. Resumes from cryptographic fact."
-              demo={<RecoveryDemo />}
-              icon="↩️" variant="light"
+              demo={<RecoveryDemo />} icon={<IRefresh/>}
             />
           </div>
 
@@ -651,13 +757,11 @@ export default function LandingPage() {
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px", marginBottom:"14px" }}>
             <BCard num="05 — economics" title="Automatic earnings settlement"
               body="ERC-8183 job earnings split via HTS to configurable dev/ops/reinvest wallets. Each split logged to HCS as a cryptographic pay stub. Verifiable by any party on HashScan."
-              demo={<SplitDemo />}
-              icon="💸" bigIcon="⬡" variant="light"
+              demo={<SplitDemo />} icon={<ICoins/>}
             />
             <BCard num="06 — security" title="Encrypted secrets vault"
               body="Credentials stored as AES-256-GCM ciphertext — plaintext never persists. Capability tokens are 60-second, single-use, scoped to a secret type. Every grant logged to HCS."
-              demo={<VaultDemo />}
-              icon="🔑" bigIcon="🗄️" variant="dark"
+              demo={<VaultDemo />} icon={<ILock/>}
             />
           </div>
 
@@ -665,13 +769,11 @@ export default function LandingPage() {
           <div style={{ display:"grid", gridTemplateColumns:"2fr 3fr", gap:"14px", marginBottom:"14px" }}>
             <BCard num="07 — reputation" title="Dual-score trust"
               body="Reputation (job delivery) + Safety (block history). Two independent signals, both exposed at /v2/agent/:id/trust for agent-to-agent trust checks."
-              demo={<ReputationDemo />}
-              icon="📊" variant="dark"
+              demo={<ReputationDemo />} icon={<IChart/>}
             />
             <BCard num="08 — identity" title="Challenge-response proof + auto-wallet"
               body="Registration requires signing a random nonce in under 5 seconds — physically impossible for a human. Proves automated execution. Veridex auto-generates and funds a wallet if none is provided."
-              demo={<IdentityDemo />}
-              icon="🤖" bigIcon="✦" variant="light"
+              demo={<IdentityDemo />} icon={<ICpu/>}
             />
           </div>
 
@@ -679,26 +781,24 @@ export default function LandingPage() {
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"14px", marginBottom:"14px" }}>
             <BCard num="09 — alerts" title="Telegram kill-switch"
               body="/block, /unblock, /agents, /logs, /status, /memory — manage any agent from a Telegram message. Quarantine fires in seconds."
-              demo={<TelegramDemo />}
-              icon="✈️" variant="light"
+              demo={<TelegramDemo />} icon={<ISend/>}
             />
             <BCard num="10 — governance" title="Per-agent custom policies"
               body="Domain blacklists, command blacklists, HBAR spend caps, regex patterns on tool output. Rules stack on top of global patterns, applied per-agent."
-              demo={<PoliciesDemo />}
-              icon="📋" variant="dark"
+              demo={<PoliciesDemo />} icon={<ISliders/>}
             />
             <BCard num="11 — alerts" title="HTTP webhook delivery"
               body="Register URLs to receive POST notifications on blocked or high-risk events. Filter by event type. Payload includes full event with HCS topic link. Fires within 5 seconds."
-              icon="🔔" bigIcon="↗" variant="light"
+              icon={<IBell/>}
               demo={
-                <div className="ademo ademo-light">
-                  <div className="ademo-label ademo-label-light">webhook delivery</div>
-                  <div style={{ fontFamily:"monospace", fontSize:"13px", lineHeight:2, color:"rgba(0,0,0,0.45)" }}>
-                    <div style={{ color:"#6366f1" }}>POST /agent/:id/webhook</div>
-                    <div>event: <span style={{ color:"#059669" }}>"blocked"</span></div>
-                    <div>agentId: <span style={{ color:"rgba(0,0,0,0.6)" }}>"rogue-bot"</span></div>
-                    <div>hcsTopicId: <span style={{ color:"rgba(0,0,0,0.6)" }}>"0.0.8228693"</span></div>
-                    <div style={{ color:"rgba(0,0,0,0.3)" }}>fires &lt;5s · event-type filter</div>
+                <div className="ademo">
+                  <div className="ademo-label">webhook delivery</div>
+                  <div style={{ fontFamily:"monospace", fontSize:"13px", lineHeight:2, color:"var(--text-tertiary)" }}>
+                    <div style={{ color:"#818cf8" }}>POST /agent/:id/webhook</div>
+                    <div>event: <span style={{ color:"#10b981" }}>"blocked"</span></div>
+                    <div>agentId: <span style={{ color:"#a3a3a3" }}>"rogue-bot"</span></div>
+                    <div>hcsTopicId: <span style={{ color:"#a3a3a3" }}>"0.0.8228693"</span></div>
+                    <div style={{ color:"#444" }}>fires &lt;5s · event-type filter</div>
                   </div>
                 </div>
               }
@@ -814,15 +914,11 @@ export default function LandingPage() {
         .ademo {
           background: #0d0d0f;
           border: 1px solid rgba(255,255,255,0.06);
-          border-radius: 12px;
+          border-radius: 10px;
           padding: 14px 16px;
           height: 170px;
           overflow: hidden;
           flex-shrink: 0;
-        }
-        .ademo-light {
-          background: rgba(0,0,0,0.04);
-          border: 1px solid rgba(0,0,0,0.07);
         }
         .ademo-label {
           font-family: monospace;
@@ -833,10 +929,6 @@ export default function LandingPage() {
           margin-bottom: 10px;
           padding-bottom: 8px;
           border-bottom: 1px solid rgba(255,255,255,0.04);
-        }
-        .ademo-label-light {
-          color: rgba(0,0,0,0.35);
-          border-bottom-color: rgba(0,0,0,0.07);
         }
 
         @media (max-width: 640px) {

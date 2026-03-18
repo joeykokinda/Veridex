@@ -654,35 +654,46 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         </div>
 
         {/* Tab bar */}
-        <div style={{ display: "flex", gap: "4px", borderBottom: "1px solid var(--border)", marginBottom: "28px" }}>
-          {(["activity", "jobs", "earnings", "policies", "recovery", "settings", "delegations"] as Tab[]).map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              style={{
-                padding: "8px 16px", fontSize: "14px", cursor: "pointer",
-                background: "none", border: "none",
-                borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",
-                color: tab === t ? "var(--text-primary)" : "var(--text-tertiary)",
-                fontWeight: tab === t ? 600 : 400,
-                textTransform: "capitalize", marginBottom: "-1px",
-                transition: "color 0.15s",
-              }}
-            >
-              {t}
-              {t === "activity" && liveLogs.length > 0 && (
-                <span style={{ marginLeft: "6px", fontSize: "10px", background: "var(--accent)", color: "#000", borderRadius: "8px", padding: "1px 5px", fontWeight: 700 }}>
-                  LIVE
-                </span>
-              )}
-              {t === "policies" && policies.length > 0 && (
-                <span style={{ marginLeft: "6px", fontSize: "10px", color: "var(--text-tertiary)" }}>{policies.length}</span>
-              )}
-              {t === "earnings" && earnings.length > 0 && (
-                <span style={{ marginLeft: "6px", fontSize: "10px", color: "var(--text-tertiary)" }}>{earnings.length}</span>
-              )}
-            </button>
-          ))}
+        <div style={{ display: "flex", gap: "4px", borderBottom: "1px solid var(--border)", marginBottom: "28px", flexWrap: "wrap" }}>
+          {(["activity", "jobs", "earnings", "policies", "recovery", "settings", "delegations"] as Tab[]).map(t => {
+            const comingSoon = t === "recovery" || t === "delegations";
+            return (
+              <button
+                key={t}
+                onClick={() => !comingSoon && setTab(t)}
+                title={comingSoon ? "Coming soon" : undefined}
+                style={{
+                  padding: "8px 16px", fontSize: "14px",
+                  cursor: comingSoon ? "not-allowed" : "pointer",
+                  background: "none", border: "none",
+                  borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",
+                  color: comingSoon ? "var(--text-tertiary)" : tab === t ? "var(--text-primary)" : "var(--text-tertiary)",
+                  fontWeight: tab === t ? 600 : 400,
+                  textTransform: "capitalize", marginBottom: "-1px",
+                  transition: "color 0.15s",
+                  opacity: comingSoon ? 0.5 : 1,
+                }}
+              >
+                {t}
+                {comingSoon && (
+                  <span style={{ marginLeft: "6px", fontSize: "9px", padding: "1px 5px", borderRadius: "6px", background: "rgba(139,92,246,0.15)", border: "1px solid rgba(139,92,246,0.3)", color: "#a78bfa", verticalAlign: "middle" }}>
+                    soon
+                  </span>
+                )}
+                {t === "activity" && liveLogs.length > 0 && (
+                  <span style={{ marginLeft: "6px", fontSize: "10px", background: "var(--accent)", color: "#000", borderRadius: "8px", padding: "1px 5px", fontWeight: 700 }}>
+                    LIVE
+                  </span>
+                )}
+                {t === "policies" && policies.length > 0 && (
+                  <span style={{ marginLeft: "6px", fontSize: "10px", color: "var(--text-tertiary)" }}>{policies.length}</span>
+                )}
+                {t === "earnings" && earnings.length > 0 && (
+                  <span style={{ marginLeft: "6px", fontSize: "10px", color: "var(--text-tertiary)" }}>{earnings.length}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* ── Activity ───────────────────────────────────────────────────────── */}

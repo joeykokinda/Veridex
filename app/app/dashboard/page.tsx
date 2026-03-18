@@ -130,11 +130,22 @@ export default function DashboardPage() {
   const fetchAgents = useCallback(async (wallet: string) => {
     setLoading(true);
     try {
+      // Fetch agents by wallet
       const r = await fetch(`/api/proxy/api/monitor/agents?wallet=${wallet}`);
-      if (r.ok) {
-        const d = await r.json();
-        setAgents(d.agents || []);
+      const walletAgents: AgentCard[] = r.ok ? (await r.json()).agents || [] : [];
+
+      // Also fetch any agents claimed without wallet (stored in localStorage)
+      const claimedIds: string[] = JSON.parse(localStorage.getItem("veridex_claimed_agents") || "[]");
+      const extra: AgentCard[] = [];
+      for (const id of claimedIds) {
+        if (walletAgents.find(a => a.id === id)) continue; // already in wallet list
+        try {
+          const cr = await fetch(`/api/proxy/api/monitor/agent/${id}`);
+          if (cr.ok) { const d = await cr.json(); if (d.agent) extra.push(d.agent); }
+        } catch {}
       }
+
+      setAgents([...walletAgents, ...extra]);
     } catch {}
     setLoading(false);
   }, []);
@@ -291,6 +302,35 @@ export default function DashboardPage() {
         {!loading && agents.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "16px" }}>
             {agents.map(agent => <AgentCardUI key={agent.id} agent={agent} recentLogs={recentLogs} />)}
+          </div>
+        )}
+
+        {/* Coming Soon features */}
+        {!loading && (
+          <div style={{ marginTop: "48px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+              <h2 style={{ fontSize: "16px", fontWeight: 600, margin: 0 }}>Coming soon</h2>
+              <div style={{ flex: 1, height: "1px", background: "var(--border)" }} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "12px" }}>
+              {[
+                { icon: "⚡", title: "Multi-framework agents", desc: "Connect LangChain, CrewAI, AutoGen, and custom agent frameworks with a simple REST API." },
+                { icon: "🔗", title: "Cross-agent workflows", desc: "Define trust relationships between agents and enforce permissions across multi-agent pipelines." },
+                { icon: "📊", title: "Analytics & insights", desc: "Deep behavioral analytics, cost tracking, and performance benchmarks across your entire fleet." },
+                { icon: "🛡️", title: "Policy templates", desc: "Pre-built policy sets for common use cases — financial agents, research bots, customer service." },
+              ].map(({ icon, title, desc }) => (
+                <div key={title} style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "10px", padding: "18px", opacity: 0.7 }}>
+                  <div style={{ fontSize: "22px", marginBottom: "10px" }}>{icon}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                    <span style={{ fontWeight: 600, fontSize: "14px" }}>{title}</span>
+                    <span style={{ fontSize: "10px", padding: "1px 7px", borderRadius: "10px", background: "rgba(139,92,246,0.12)", border: "1px solid rgba(139,92,246,0.35)", color: "#a78bfa" }}>
+                      Soon
+                    </span>
+                  </div>
+                  <p style={{ fontSize: "13px", color: "var(--text-tertiary)", margin: 0, lineHeight: 1.6 }}>{desc}</p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

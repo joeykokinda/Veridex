@@ -169,60 +169,70 @@ export default function AddAgentPage() {
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginBottom: "32px" }}>
-              {[
-                {
-                  id: "openclaw" as AgentType,
-                  title: "OpenClaw agent",
-                  badge: "Recommended",
-                  desc: "You have an OpenClaw agent running. Connect it in 30 seconds — Veridex generates a personalized skill URL you paste into your config. No code changes needed.",
-                  pros: ["30-second setup", "Auto-logs every tool call", "Personalized skill URL"],
-                },
-                {
-                  id: "custom" as AgentType,
-                  title: "Custom agent",
-                  badge: null,
-                  desc: "Using LangChain, CrewAI, AutoGen, or your own agent framework. Add a single HTTP POST before each action and Veridex handles the rest.",
-                  pros: ["Any framework", "Simple REST API", "Same dashboard & alerts"],
-                },
-              ].map(({ id, title, badge, desc, pros }) => (
-                <div
-                  key={id}
-                  onClick={() => setAgentType(id)}
-                  style={{
-                    border: `1px solid ${agentType === id ? "var(--accent)" : "var(--border)"}`,
-                    borderRadius: "10px", padding: "20px", cursor: "pointer",
-                    background: agentType === id ? "var(--accent-dim)" : "var(--bg-secondary)",
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-                    <div style={{
-                      width: "18px", height: "18px", borderRadius: "50%",
-                      border: `2px solid ${agentType === id ? "var(--accent)" : "var(--border)"}`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      flexShrink: 0,
-                    }}>
-                      {agentType === id && <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--accent)" }} />}
-                    </div>
-                    <span style={{ fontWeight: 700, fontSize: "15px" }}>{title}</span>
-                    {badge && (
-                      <span style={{
-                        fontSize: "10px", padding: "2px 8px", borderRadius: "10px",
-                        background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)",
-                        color: "var(--accent)",
-                      }}>
-                        {badge}
-                      </span>
-                    )}
+              {/* OpenClaw — selectable */}
+              <div
+                onClick={() => setAgentType("openclaw")}
+                style={{
+                  border: `1px solid ${agentType === "openclaw" ? "var(--accent)" : "var(--border)"}`,
+                  borderRadius: "10px", padding: "20px", cursor: "pointer",
+                  background: agentType === "openclaw" ? "var(--accent-dim)" : "var(--bg-secondary)",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                  <div style={{
+                    width: "18px", height: "18px", borderRadius: "50%",
+                    border: `2px solid ${agentType === "openclaw" ? "var(--accent)" : "var(--border)"}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0,
+                  }}>
+                    {agentType === "openclaw" && <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--accent)" }} />}
                   </div>
-                  <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "12px", lineHeight: 1.6 }}>{desc}</p>
-                  <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", gap: "12px", flexWrap: "wrap" }}>
-                    {pros.map(p => (
-                      <li key={p} style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>✓ {p}</li>
-                    ))}
-                  </ul>
+                  <span style={{ fontWeight: 700, fontSize: "15px" }}>OpenClaw agent</span>
+                  <span style={{
+                    fontSize: "10px", padding: "2px 8px", borderRadius: "10px",
+                    background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)",
+                    color: "var(--accent)",
+                  }}>
+                    Recommended
+                  </span>
                 </div>
-              ))}
+                <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "12px", lineHeight: 1.6 }}>
+                  You have an OpenClaw agent running. Connect it in 30 seconds — Veridex generates a personalized skill URL you paste into your config. No code changes needed.
+                </p>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                  {["30-second setup", "Auto-logs every tool call", "Personalized skill URL"].map(p => (
+                    <li key={p} style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>✓ {p}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Custom agent — coming soon */}
+              <div style={{
+                border: "1px solid var(--border)", borderRadius: "10px", padding: "20px",
+                background: "var(--bg-secondary)", opacity: 0.55, cursor: "not-allowed",
+                position: "relative",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                  <div style={{ width: "18px", height: "18px", borderRadius: "50%", border: "2px solid var(--border)", flexShrink: 0 }} />
+                  <span style={{ fontWeight: 700, fontSize: "15px" }}>Custom agent</span>
+                  <span style={{
+                    fontSize: "10px", padding: "2px 8px", borderRadius: "10px",
+                    background: "rgba(139,92,246,0.12)", border: "1px solid rgba(139,92,246,0.35)",
+                    color: "#a78bfa",
+                  }}>
+                    Coming soon
+                  </span>
+                </div>
+                <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "12px", lineHeight: 1.6 }}>
+                  Using LangChain, CrewAI, AutoGen, or your own agent framework. Add a single HTTP POST before each action and Veridex handles the rest.
+                </p>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                  {["Any framework", "Simple REST API", "Same dashboard & alerts"].map(p => (
+                    <li key={p} style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>✓ {p}</li>
+                  ))}
+                </ul>
+              </div>
             </div>
 
             <button
