@@ -95,7 +95,7 @@ export default function LeaderboardPage() {
     <>
       <Nav />
 
-      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "32px 24px" }}>
+      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "92px 24px 32px" }}>
         <div style={{ marginBottom: "32px" }}>
           <h1 style={{ fontSize: "28px", fontWeight: "700", marginBottom: "8px" }}>
             Agent Leaderboard

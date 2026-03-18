@@ -5,7 +5,6 @@ import { join } from "path";
 export async function GET(req: NextRequest) {
   const agentId = req.nextUrl.searchParams.get("agent");
 
-  // Read the base skill.md from public/
   const filePath = join(process.cwd(), "public", "skill.md");
   let content: string;
   try {
@@ -14,18 +13,17 @@ export async function GET(req: NextRequest) {
     return new NextResponse("Skill not found", { status: 404 });
   }
 
+  // If loaded with ?agent=X (via dashboard/add flow), pre-fill the agentId
+  // and mark the agent as already registered so it skips first-time setup.
   if (agentId) {
-    // Pre-fill the agent ID throughout the skill document
     content = content
       .replace(/your-agent-id/g, agentId)
       .replace(/your-unique-agent-id/g, agentId)
-      .replace(/AGENT_ID = "my-openclaw-agent"/g, `AGENT_ID = "${agentId}"`)
-      .replace(/agentId:   "your-unique-agent-id"/g, `agentId:   "${agentId}"`);
+      .replace(/^---\n/, `---\nagent: ${agentId}\n`);
 
-    // Inject agent ID into frontmatter
     content = content.replace(
-      /^---\n/,
-      `---\nagent: ${agentId}\n`
+      "**If you are already registered** (you have an `agentId` from a previous session), skip this and go straight to Step 1.",
+      `**You are already registered** as \`${agentId}\`. Skip the setup above and go straight to Step 1.`
     );
   }
 

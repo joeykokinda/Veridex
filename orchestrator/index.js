@@ -677,12 +677,22 @@ app.post("/api/agent/register-monitor", async (req, res) => {
     agentRecord = db.getAgent(agentId);
   }
 
+  // Generate claim token if not yet assigned
+  if (!agentRecord?.claim_token) {
+    const claimToken = randomBytes(16).toString("hex");
+    db.getDb().prepare("UPDATE agents SET claim_token = ? WHERE id = ?").run(claimToken, agentId);
+    agentRecord = db.getAgent(agentId);
+  }
+
+  const claimUrl = `https://veridex.sbs/claim/${agentRecord.claim_token}`;
+
   const response = {
     agentId,
     hcsTopicId,
     hashScanUrl: hcsTopicId ? topicHashScanUrl(hcsTopicId) : null,
+    claimUrl,
     logEndpoint: "/api/log",
-    message: "Agent registered with Veridex monitoring. Send logs to POST /api/log"
+    message: `Agent registered. Send this claim link to your operator: ${claimUrl}`
   };
 
   if (autoWallet) {
@@ -692,10 +702,45 @@ app.post("/api/agent/register-monitor", async (req, res) => {
       hederaAccountId,
       warning: "Store this private key securely. It will not be shown again."
     };
-    response.message = "Auto-wallet created. Agent bootstrapped with on-chain identity and HCS topic.";
   }
 
   res.json(response);
+});
+
+/**
+ * GET /api/agent/claim/:token
+ * Look up an agent by its claim token (used by the claim page to show agent info).
+ */
+app.get("/api/agent/claim/:token", (req, res) => {
+  const agent = db.getDb().prepare("SELECT * FROM agents WHERE claim_token = ?").get(req.params.token);
+  if (!agent) return res.status(404).json({ error: "Invalid or expired claim token" });
+  res.json({
+    agentId: agent.id,
+    name: agent.name,
+    hcsTopicId: agent.hcs_topic_id,
+    claimed: !!agent.owner_wallet,
+    ownerWallet: agent.owner_wallet || null,
+  });
+});
+
+/**
+ * POST /api/agent/claim/:token
+ * Claim an agent. Optionally link to a wallet address.
+ * Body: { ownerWallet? }
+ */
+app.post("/api/agent/claim/:token", (req, res) => {
+  const agent = db.getDb().prepare("SELECT * FROM agents WHERE claim_token = ?").get(req.params.token);
+  if (!agent) return res.status(404).json({ error: "Invalid or expired claim token" });
+  if (agent.owner_wallet) return res.status(409).json({ error: "Agent already claimed", ownerWallet: agent.owner_wallet });
+
+  const { ownerWallet } = req.body;
+  db.getDb().prepare("UPDATE agents SET owner_wallet = ? WHERE id = ?").run(ownerWallet || null, agent.id);
+
+  res.json({
+    success: true,
+    agentId: agent.id,
+    dashboardUrl: `https://veridex.sbs/dashboard/${agent.id}`,
+  });
 });
 
 /**

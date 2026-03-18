@@ -199,7 +199,7 @@ export default function DashboardPage() {
   return (
     <>
       <Nav />
-      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "32px 24px" }}>
+      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "92px 24px 32px" }}>
 
         {/* Global alert banner */}
         {highAlertAgent && (

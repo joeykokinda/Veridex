@@ -93,45 +93,6 @@ function LiveFeed() {
   );
 }
 
-// ── Hero pipeline ─────────────────────────────────────────────────────────────
-const STAGES = [
-  { l:"agent",     c:"#6b7280" },
-  { l:"preflight", c:"#f59e0b" },
-  { l:"decision",  c:"#10b981" },
-  { l:"execute",   c:"#818cf8" },
-  { l:"settle",    c:"#10b981" },
-];
-function Pipeline() {
-  const [step, setStep] = useState(0);
-  const [blocked, setBlocked] = useState(false);
-  useEffect(() => {
-    const iv = setInterval(() => {
-      setStep(s => {
-        const n = s+1;
-        if (n >= STAGES.length) { setBlocked(Math.random()<0.28); return 0; }
-        return n;
-      });
-    }, 650);
-    return () => clearInterval(iv);
-  }, []);
-  return (
-    <div style={{ display:"flex", alignItems:"center", fontFamily:"monospace", fontSize:"13px", flexWrap:"wrap", justifyContent:"center", gap:0, rowGap:"8px" }}>
-      {STAGES.map((s,i)=>{
-        const active=step===i, past=step>i, isB=blocked&&i===2;
-        const c = isB?"#ef4444":(active||past)?s.c:"#2a2a2a";
-        return (
-          <span key={s.l} style={{ display:"flex", alignItems:"center" }}>
-            <span style={{ padding:"4px 13px", borderRadius:"4px", border:`1px solid ${c}`, background:active?`${c}18`:"transparent", color:c, transition:"all 0.25s ease", fontWeight:active?700:400, boxShadow:active?`0 0 14px ${c}55`:"none" }}>
-              {isB?"blocked ✕":s.l}
-            </span>
-            {i<STAGES.length-1&&<span style={{ color:step>i?"#2a2a2a":"#1a1a1a", margin:"0 5px", transition:"color 0.3s" }}>→</span>}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
 // ── Animated demos ────────────────────────────────────────────────────────────
 
 // Decision loop
@@ -459,20 +420,62 @@ function CostTable() {
 }
 
 // ── Bento card ────────────────────────────────────────────────────────────────
-function BCard({ num, title, body, demo, accent="#10b981", style: s={} }: {
+function BCard({ num, title, body, demo, icon, bigIcon, variant="dark", style: s={} }: {
   num: string; title: string; body: string;
-  demo?: React.ReactNode; accent?: string;
+  demo?: React.ReactNode;
+  icon?: string;
+  bigIcon?: string;
+  variant?: "dark" | "light";
   style?: React.CSSProperties;
 }) {
   const { ref, v } = useReveal(0.06);
+  const isDark = variant === "dark";
   return (
-    <div ref={ref} className={v?"bcard bcard-in":"bcard"} style={{ background:"#09090b", border:"1px solid var(--border)", borderRadius:"14px", padding:"26px 26px 24px", display:"flex", flexDirection:"column" as const, gap:"18px", transition:"border-color 0.2s", ...s }}>
-      <div>
-        <div style={{ fontSize:"11px", fontFamily:"monospace", color:"var(--text-tertiary)", marginBottom:"10px", letterSpacing:"0.5px" }}>{num}</div>
-        <div style={{ fontSize:"17px", fontWeight:700, marginBottom:"10px", color:"var(--text-primary)" }}>{title}</div>
-        <p style={{ fontSize:"14px", color:"var(--text-tertiary)", lineHeight:1.75, margin:0 }}>{body}</p>
+    <div ref={ref} className={v?"bcard bcard-in":"bcard"} style={{
+      background: isDark ? "#0a0a0b" : "#f4f4f5",
+      border: `1px solid ${isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)"}`,
+      borderRadius: "20px", padding: "28px",
+      display: "flex", flexDirection: "column" as const, gap: "16px",
+      position: "relative", overflow: "hidden",
+      ...s
+    }}>
+      {/* Small icon badge */}
+      {icon && (
+        <div style={{
+          width: 42, height: 42, borderRadius: "12px", flexShrink: 0,
+          background: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)",
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px",
+        }}>
+          {icon}
+        </div>
+      )}
+      {/* Large background watermark */}
+      {bigIcon && (
+        <div style={{
+          position: "absolute", right: "20px", top: "20px",
+          fontSize: "100px", lineHeight: 1, userSelect: "none" as const,
+          opacity: isDark ? 0.07 : 0.06, pointerEvents: "none" as const,
+        }}>
+          {bigIcon}
+        </div>
+      )}
+      {/* Demo */}
+      {demo && <div style={{ flex: 1 }}>{demo}</div>}
+      {/* Text at bottom */}
+      <div style={{ marginTop: "auto" }}>
+        <div style={{ fontSize: "10px", fontFamily: "monospace", letterSpacing: "0.5px", marginBottom: "6px",
+          color: isDark ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.3)" }}>
+          {num}
+        </div>
+        <div style={{ fontSize: "17px", fontWeight: 700, marginBottom: "8px", lineHeight: 1.2,
+          color: isDark ? "#fff" : "#0a0a0b" }}>
+          {title}
+        </div>
+        <p style={{ fontSize: "13px", lineHeight: 1.7, margin: 0,
+          color: isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.5)" }}>
+          {body}
+        </p>
       </div>
-      {demo && <div style={{ marginTop:"auto" }}>{demo}</div>}
     </div>
   );
 }
@@ -480,10 +483,10 @@ function BCard({ num, title, body, demo, accent="#10b981", style: s={} }: {
 // ── Problem columns (separate components to avoid hooks-in-loops) ─────────────
 function CanDoCol() {
   const { ref, v } = useReveal(0.1);
-  const items = ["Execute tools and shell commands","Access files and credentials","Move funds and accept jobs","Call external services","Interact with other agents"];
+  const items = ["Run shell commands and execute code","Read and write files and credentials","Move funds, accept jobs, and split earnings","Call external APIs and services","Spawn and coordinate other agents"];
   return (
     <div ref={ref} style={{ padding:"24px 26px", borderRight:"1px solid var(--border)" }}>
-      <div style={{ fontSize:"11px", fontFamily:"monospace", color:"#10b981", marginBottom:"18px", textTransform:"uppercase" as const, letterSpacing:"0.8px" }}>Agents can</div>
+      <div style={{ fontSize:"11px", fontFamily:"monospace", color:"#10b981", marginBottom:"18px", textTransform:"uppercase" as const, letterSpacing:"0.8px" }}>Agents already do this</div>
       {items.map((item,i)=>(
         <div key={item} className={v?"reveal-item":"reveal-item-hidden"} style={{ display:"flex", gap:"10px", alignItems:"flex-start", marginBottom:"10px", animationDelay:`${i*90}ms` }}>
           <span style={{ color:"#10b981", fontSize:"13px", flexShrink:0, marginTop:"2px" }}>✓</span>
@@ -495,10 +498,10 @@ function CanDoCol() {
 }
 function CantVerifyCol() {
   const { ref, v } = useReveal(0.1);
-  const items = ["That they did what was intended","That dangerous actions were stopped","That state survives a crash","That earnings were fairly split","That behavior was what was claimed"];
+  const items = ["Whether the action matched what was intended","Whether dangerous behavior was actually stopped","Whether funds were split correctly","Whether a crash corrupted state","Whether the audit trail is real or fabricated"];
   return (
     <div ref={ref} style={{ padding:"24px 26px", background:"rgba(239,68,68,0.03)" }}>
-      <div style={{ fontSize:"11px", fontFamily:"monospace", color:"#ef4444", marginBottom:"18px", textTransform:"uppercase" as const, letterSpacing:"0.8px" }}>Nobody can verify</div>
+      <div style={{ fontSize:"11px", fontFamily:"monospace", color:"#ef4444", marginBottom:"18px", textTransform:"uppercase" as const, letterSpacing:"0.8px" }}>With no trust layer, you can't prove</div>
       {items.map((item,i)=>(
         <div key={item} className={v?"reveal-item":"reveal-item-hidden"} style={{ display:"flex", gap:"10px", alignItems:"flex-start", marginBottom:"10px", animationDelay:`${(i+5)*90}ms` }}>
           <span style={{ color:"#ef4444", fontSize:"13px", flexShrink:0, marginTop:"2px" }}>✕</span>
@@ -536,18 +539,12 @@ export default function LandingPage() {
       <main>
 
         {/* ── HERO ─────────────────────────────────────────────────────────── */}
-        <section style={{ padding:"96px 24px 56px", maxWidth:"820px", margin:"0 auto", textAlign:"center" }}>
-          <div style={{ fontSize:"12px", fontFamily:"monospace", color:"#10b981", background:"rgba(16,185,129,0.08)", border:"1px solid rgba(16,185,129,0.18)", borderRadius:"20px", padding:"4px 14px", display:"inline-block", marginBottom:"28px" }}>
-            OpenClaw · Hedera HCS · ERC-8004 · ERC-8183
-          </div>
+        <section style={{ padding:"136px 24px 56px", maxWidth:"820px", margin:"0 auto", textAlign:"center" }}>
           <h1 style={{ fontSize:"clamp(34px,5.5vw,56px)", fontWeight:800, lineHeight:1.08, letterSpacing:"-1.5px", marginBottom:"20px" }}>
             Trust infrastructure<br /><span style={{ color:"#10b981" }}>for autonomous agents</span>
           </h1>
           <p style={{ fontSize:"18px", color:"var(--text-secondary)", lineHeight:1.7, marginBottom:"6px", maxWidth:"560px", margin:"0 auto 6px" }}>Agents can earn, spend, coordinate, and execute.</p>
           <p style={{ fontSize:"17px", color:"var(--text-tertiary)", lineHeight:1.7, marginBottom:"32px", maxWidth:"560px", margin:"0 auto 32px" }}>Without Veridex, none of it is safe or verifiable.</p>
-          <div style={{ margin:"0 auto 36px", maxWidth:"600px", padding:"16px 20px", background:"#09090b", border:"1px solid rgba(16,185,129,0.15)", borderRadius:"10px" }}>
-            <Pipeline />
-          </div>
           <div style={{ display:"flex", gap:"12px", justifyContent:"center", flexWrap:"wrap" }}>
             <Link href="/dashboard" style={{ background:"#10b981", borderRadius:"8px", padding:"12px 26px", fontSize:"15px", fontWeight:700, color:"#000", textDecoration:"none" }}>Open Dashboard</Link>
             <Link href="/leaderboard" style={{ background:"transparent", border:"1px solid var(--border)", borderRadius:"8px", padding:"12px 26px", fontSize:"15px", fontWeight:500, color:"var(--text-primary)", textDecoration:"none" }}>View Live Feed</Link>
@@ -581,6 +578,25 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* ── HOW IT WORKS ─────────────────────────────────────────────────── */}
+        <section style={{ borderTop:"1px solid var(--border)", padding:"72px 24px", maxWidth:"820px", margin:"0 auto" }}>
+          <p style={{ fontSize:"11px", fontFamily:"monospace", color:"var(--text-tertiary)", marginBottom:"14px", textTransform:"uppercase" as const, letterSpacing:"1px" }}>How it works</p>
+          <h2 style={{ fontSize:"clamp(20px,3.5vw,28px)", fontWeight:700, marginBottom:"40px", lineHeight:1.2 }}>Every agent action runs through Veridex.</h2>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"32px" }}>
+            {([
+              { step:"01", label:"Submit", color:"#f59e0b", desc:"The agent submits an action — tool call, shell command, API request, fund transfer — before or as it executes." },
+              { step:"02", label:"Check",  color:"#ef4444", desc:"Veridex evaluates it synchronously against blocking rules, delegation scope, and risk patterns. Dangerous actions are stopped immediately." },
+              { step:"03", label:"Log",    color:"#10b981", desc:"The outcome — allowed or blocked — is encrypted and written to Hedera HCS. Tamper-proof, permanent, verifiable by anyone on HashScan." },
+            ] as {step:string;label:string;color:string;desc:string}[]).map(({step,label,color,desc})=>(
+              <div key={step}>
+                <div style={{ fontFamily:"monospace", fontSize:"11px", color:"var(--text-tertiary)", marginBottom:"10px", letterSpacing:"0.5px" }}>{step}</div>
+                <div style={{ fontSize:"18px", fontWeight:700, color, marginBottom:"10px" }}>{label}</div>
+                <p style={{ fontSize:"14px", color:"var(--text-secondary)", lineHeight:1.75, margin:0 }}>{desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* ── WHY NOW ──────────────────────────────────────────────────────── */}
         <section style={{ borderTop:"1px solid var(--border)", padding:"60px 24px", background:"rgba(16,185,129,0.015)" }}>
           <div style={{ maxWidth:"680px", margin:"0 auto" }}>
@@ -608,22 +624,26 @@ export default function LandingPage() {
             <BCard num="01 — control plane" title="Pre-execution interception"
               body="Every tool call routes through a synchronous check before it runs. Returns allowed: true or allowed: false. No async, no retry — the agent cannot proceed without a verdict."
               demo={<DecisionDemo />}
+              icon="⚡" variant="light"
             />
             <BCard num="02 — control plane" title="Multi-layer blocking engine"
               body="Credential access, RCE, privilege escalation, loop detection (20+ identical actions / 60s), and custom per-agent rules. All evaluated synchronously. All blocks logged to HCS."
               demo={<BlockingDemo />}
+              icon="🔒" bigIcon="🛡️" variant="dark"
             />
           </div>
 
           {/* Row 2: HCS (wide) + recovery */}
           <div style={{ display:"grid", gridTemplateColumns:"3fr 2fr", gap:"14px", marginBottom:"14px" }}>
             <BCard num="03 — hedera" title="AES-256-GCM encrypted HCS audit"
-              body="Every action encrypted with a per-agent key, appended to a Hedera HCS topic, final in 3–5 seconds. The plaintext never leaves your orchestrator. Tamper-proof. Verifiable on HashScan. Independent of your infrastructure."
+              body="Every action encrypted with a per-agent key, appended to a Hedera HCS topic, final in 3–5 seconds. The plaintext never leaves your orchestrator. Tamper-proof. Verifiable on HashScan."
               demo={<HCSDemo />}
+              icon="🔗" bigIcon="⛓️" variant="dark"
             />
             <BCard num="04 — hedera" title="Deterministic crash recovery"
               body="On restart, one call reads the HCS topic via Mirror Node and reconstructs complete state: open jobs, blocked actions, pending earnings. Resumes from cryptographic fact."
               demo={<RecoveryDemo />}
+              icon="↩️" variant="light"
             />
           </div>
 
@@ -632,22 +652,26 @@ export default function LandingPage() {
             <BCard num="05 — economics" title="Automatic earnings settlement"
               body="ERC-8183 job earnings split via HTS to configurable dev/ops/reinvest wallets. Each split logged to HCS as a cryptographic pay stub. Verifiable by any party on HashScan."
               demo={<SplitDemo />}
+              icon="💸" bigIcon="⬡" variant="light"
             />
             <BCard num="06 — security" title="Encrypted secrets vault"
               body="Credentials stored as AES-256-GCM ciphertext — plaintext never persists. Capability tokens are 60-second, single-use, scoped to a secret type. Every grant logged to HCS."
               demo={<VaultDemo />}
+              icon="🔑" bigIcon="🗄️" variant="dark"
             />
           </div>
 
-          {/* Row 4: identity (wide) + reputation */}
+          {/* Row 4: reputation + identity */}
           <div style={{ display:"grid", gridTemplateColumns:"2fr 3fr", gap:"14px", marginBottom:"14px" }}>
-            <BCard num="07 — reputation" title="Dual-score trust: reputation + safety"
-              body="Two independent signals. Reputation (0–1000) tracks job delivery: +10 on-time, +20 five-star, −15 abandoned. Safety (0–1000) tracks policy behavior: −5 per blocked action. Both exposed at /v2/agent/:id/trust for agent-to-agent trust checks."
+            <BCard num="07 — reputation" title="Dual-score trust"
+              body="Reputation (job delivery) + Safety (block history). Two independent signals, both exposed at /v2/agent/:id/trust for agent-to-agent trust checks."
               demo={<ReputationDemo />}
+              icon="📊" variant="dark"
             />
             <BCard num="08 — identity" title="Challenge-response proof + auto-wallet"
-              body="Registration requires signing a random nonce in under 5 seconds — physically impossible for a human. Proves automated execution. If no wallet provided, Veridex generates a keypair, funds it 2 HBAR via faucet, and registers it on AgentIdentity automatically."
+              body="Registration requires signing a random nonce in under 5 seconds — physically impossible for a human. Proves automated execution. Veridex auto-generates and funds a wallet if none is provided."
               demo={<IdentityDemo />}
+              icon="🤖" bigIcon="✦" variant="light"
             />
           </div>
 
@@ -656,22 +680,25 @@ export default function LandingPage() {
             <BCard num="09 — alerts" title="Telegram kill-switch"
               body="/block, /unblock, /agents, /logs, /status, /memory — manage any agent from a Telegram message. Quarantine fires in seconds."
               demo={<TelegramDemo />}
+              icon="✈️" variant="light"
             />
             <BCard num="10 — governance" title="Per-agent custom policies"
-              body="Domain blacklists, command blacklists, HBAR spend caps, regex patterns on tool output. Rules stack on top of global patterns and are applied per-agent."
+              body="Domain blacklists, command blacklists, HBAR spend caps, regex patterns on tool output. Rules stack on top of global patterns, applied per-agent."
               demo={<PoliciesDemo />}
+              icon="📋" variant="dark"
             />
             <BCard num="11 — alerts" title="HTTP webhook delivery"
-              body="Register URLs to receive POST notifications on blocked or high-risk events. Filter by event type. Payload includes the full event with HCS topic link. Fires within 5 seconds."
+              body="Register URLs to receive POST notifications on blocked or high-risk events. Filter by event type. Payload includes full event with HCS topic link. Fires within 5 seconds."
+              icon="🔔" bigIcon="↗" variant="light"
               demo={
-                <div className="ademo">
-                  <div className="ademo-label">webhook delivery</div>
-                  <div style={{ fontFamily:"monospace", fontSize:"13px", lineHeight:2, color:"var(--text-tertiary)" }}>
-                    <div style={{ color:"#818cf8" }}>POST /agent/:id/webhook</div>
-                    <div>event: <span style={{ color:"#10b981" }}>"blocked"</span></div>
-                    <div>agentId: <span style={{ color:"#a3a3a3" }}>"rogue-bot"</span></div>
-                    <div>hcsTopicId: <span style={{ color:"#a3a3a3" }}>"0.0.8228693"</span></div>
-                    <div style={{ color:"#444" }}>fires &lt;5s · event-type filter</div>
+                <div className="ademo ademo-light">
+                  <div className="ademo-label ademo-label-light">webhook delivery</div>
+                  <div style={{ fontFamily:"monospace", fontSize:"13px", lineHeight:2, color:"rgba(0,0,0,0.45)" }}>
+                    <div style={{ color:"#6366f1" }}>POST /agent/:id/webhook</div>
+                    <div>event: <span style={{ color:"#059669" }}>"blocked"</span></div>
+                    <div>agentId: <span style={{ color:"rgba(0,0,0,0.6)" }}>"rogue-bot"</span></div>
+                    <div>hcsTopicId: <span style={{ color:"rgba(0,0,0,0.6)" }}>"0.0.8228693"</span></div>
+                    <div style={{ color:"rgba(0,0,0,0.3)" }}>fires &lt;5s · event-type filter</div>
                   </div>
                 </div>
               }
@@ -780,18 +807,22 @@ export default function LandingPage() {
         .reveal-item-hidden { opacity:0; transform:translateY(12px); }
         .reveal-item { animation: slideUp 0.4s cubic-bezier(0.16,1,0.3,1) both; }
 
-        .bcard { transition: border-color 0.2s; }
-        .bcard:hover { border-color: rgba(16,185,129,0.25) !important; }
+        .bcard { transition: box-shadow 0.2s, border-color 0.2s; }
+        .bcard:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.18); border-color: rgba(16,185,129,0.2) !important; }
         .bcard-in { animation: slideUp 0.45s cubic-bezier(0.16,1,0.3,1) both; }
 
         .ademo {
           background: #0d0d0f;
           border: 1px solid rgba(255,255,255,0.06);
-          border-radius: 8px;
+          border-radius: 12px;
           padding: 14px 16px;
           height: 170px;
           overflow: hidden;
           flex-shrink: 0;
+        }
+        .ademo-light {
+          background: rgba(0,0,0,0.04);
+          border: 1px solid rgba(0,0,0,0.07);
         }
         .ademo-label {
           font-family: monospace;
@@ -802,6 +833,10 @@ export default function LandingPage() {
           margin-bottom: 10px;
           padding-bottom: 8px;
           border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .ademo-label-light {
+          color: rgba(0,0,0,0.35);
+          border-bottom-color: rgba(0,0,0,0.07);
         }
 
         @media (max-width: 640px) {

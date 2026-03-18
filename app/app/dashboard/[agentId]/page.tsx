@@ -572,7 +572,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   return (
     <>
       <Nav />
-      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "32px 24px" }}>
+      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "92px 24px 32px" }}>
 
         {/* Breadcrumb */}
         <div style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "20px" }}>

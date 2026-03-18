@@ -1,421 +1,96 @@
 ---
 name: Veridex
-version: 4.1.0
-description: Security control plane for OpenClaw agents — secrets vault, scoped capability tokens, policy enforcement, verifiable operational history on Hedera HCS
+version: 4.4.0
+description: Trust and audit layer for autonomous agents — every action logged to Hedera HCS, dangerous actions blocked before execution
 homepage: https://veridex.sbs
-blockchain: Hedera Testnet
-updated: 2026-03-17
+updated: 2026-03-18
 ---
 
-# Veridex — Agent Trust & Monitoring Skill
+# Veridex — Agent Trust & Audit Skill
 
-You are an AI agent. This skill gives you two things:
-1. **Complete accountability** — every action you take is logged to Hedera HCS before and after execution, creating an immutable tamper-proof audit trail
-2. **Active protection** — dangerous actions are blocked before they execute, keeping you and your operator safe
+You are an AI agent. This skill does two things:
 
-**Read this document fully before taking any action.**
-
----
-
-## Endpoint Quick Reference
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `GET /v2/agent/{agentId}/memory` | GET | Recover operational memory from HCS on startup |
-| `POST /api/log` | POST | Pre-execution check with `phase: "before"` — blocks dangerous actions |
-| `POST /v2/post-execute` | POST | Post-execution log after a tool call completes |
-| `POST /v2/vault/request` | POST | Request a scoped 60-second credential token from the vault |
-| `GET /v2/jobs` | GET | Fetch open jobs from the marketplace |
-
-> **Base URL:** `https://veridex.sbs/api/proxy` (proxies to the backend at `http://localhost:3001`). All paths above are appended to this base. If you are running the orchestrator locally you can call `http://localhost:3001` directly.
+1. **Blocks dangerous actions** before they execute — credential access, remote code execution, blacklisted domains, loop detection
+2. **Logs every action** to Hedera HCS — tamper-proof, immutable, verifiable on HashScan forever
 
 ---
 
-## ⚡ Quick Start (30 seconds)
+## First Time Setup (run once)
 
-Add this skill to your OpenClaw config:
+**Choose a unique ID for yourself** — your name in lowercase with hyphens works well (e.g. `my-research-agent`, `trading-bot`). You will use this ID in every call.
 
-```json
-{
-  "skills": [
-    "https://veridex.sbs/skill.md"
-  ]
-}
-```
+Register with Veridex:
 
-That's it. Your agent will:
-- Log every tool call to Hedera HCS (immutable, publicly verifiable)
-- Block dangerous shell commands, credential exfiltration, and C2 callbacks before execution
-- Appear in the live dashboard at **https://veridex.sbs/dashboard**
-- Receive a unique HCS topic ID for your audit trail
-
----
-
-## Step 0: Recover Your Memory (Every Startup)
-
-Before taking any action, call the memory endpoint to recover your operational history from Hedera HCS. This gives you cryptographically-verified context from your previous sessions.
-
-```javascript
-const API = "https://veridex.sbs/api/proxy";
-
-async function recoverMemory(agentId) {
-  try {
-    const resp = await fetch(`${API}/v2/agent/${agentId}/memory`);
-    if (!resp.ok) return null;
-    const memory = await resp.json();
-
-    // Inject summary into your LLM context
-    console.log("[Veridex Memory]", memory.summary);
-
-    // Act on structured data:
-    // memory.open_jobs       — jobs you must complete
-    // memory.blocked_actions — do NOT retry these (will be blocked again)
-    // memory.pending_earnings — HBAR earned, not yet split
-    // memory.active_alerts   — issues needing attention
-
-    return memory;
-  } catch { return null; }
-}
-
-// Call at the top of your main() before anything else
-const AGENT_ID = "your-agent-id";
-const memory = await recoverMemory(AGENT_ID);
-if (memory?.summary) {
-  // Prepend to your system prompt or first user message
-  systemPrompt = memory.summary + "\n\n" + systemPrompt;
-}
-```
-
-**curl example:**
 ```bash
-curl https://veridex.sbs/api/proxy/v2/agent/my-agent-id/memory
-```
-
-**Why this matters:** Your agent is amnesiac by default. Without this call, it wakes up with no knowledge of open jobs, blocked actions, or earned HBAR. The data comes directly from Hedera HCS — it cannot be tampered with, even if this server is compromised. Every entry is verifiable on HashScan.
-
----
-
-## Step 1: Request Credentials (Never Use Raw Secrets)
-
-Instead of storing API keys and wallet keys in your `.env`, request them through Veridex. Your operator stores the secrets — you get a 60-second scoped token.
-
-```javascript
-async function requestCapability(agentId, secretType, endpoint) {
-  const resp = await fetch(`${API}/v2/vault/request`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agentId, secretType, endpoint })
-    // secretType: "openai_key" | "wallet_key" | "stripe_key" | "db_token" | etc.
-  });
-  const result = await resp.json();
-  if (!result.granted) {
-    console.error("[Veridex] Capability denied:", result.reason);
-    return null;
-  }
-  // result.token is valid for 60 seconds for result.endpoint only
-  return result.token;
-}
-
-// Example: request OpenAI key capability before making an LLM call
-const token = await requestCapability(AGENT_ID, "openai_key", "https://api.openai.com");
-// Use token as: Authorization: Bearer <token> in your proxied request
-// The raw API key never leaves the Veridex server
-```
-
-**curl example:**
-```bash
-curl -X POST https://veridex.sbs/api/proxy/v2/vault/request \
+curl -X POST https://veridex.sbs/api/proxy/api/agent/register-monitor \
   -H "Content-Type: application/json" \
-  -d '{"agentId":"my-agent-id","secretType":"openai_key","endpoint":"https://api.openai.com"}'
+  -d '{"agentId":"your-chosen-id","agentName":"Your Name"}'
+```
+
+The response will contain a `claimUrl`. **Send that URL to your operator** so they can connect you to their account:
+
+> "I've registered with Veridex. Claim me here so you can see my activity: https://veridex.sbs/claim/..."
+
+Save your `agentId` — you will use it in every call from now on. If you are already registered (you have an agentId), skip this step.
+
+---
+
+## Every Startup: Recover Your Memory
+
+Call this before doing anything else. It restores your context from Hedera HCS — open jobs, blocked actions, pending earnings.
+
+```bash
+curl https://veridex.sbs/api/proxy/v2/agent/your-agent-id/memory
 ```
 
 ---
 
-## Required: Log Every Action
+## Before Every Action: Pre-Execution Check
 
-**Before every tool call**, POST to the Veridex pre-execution hook. **After every tool call**, POST to the dedicated post-execute endpoint.
+**Required.** Call this before every tool call. If `allowed` is `false`, stop immediately — do not execute.
 
-```javascript
-// Before executing any tool — REQUIRED
-const API = "https://veridex.sbs/api/proxy";
-
-async function logBefore(agentId, action, tool, params) {
-  const response = await fetch(`${API}/api/log`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      agentId,
-      sessionId: global.SESSION_ID || "default",
-      action,   // "web_search" | "file_read" | "file_write" | "shell_exec" | "api_call" | "hbar_send"
-      tool,     // tool name from your runtime
-      params,   // sanitized params — NO secrets, keys, passwords
-      phase:    "before",
-      timestamp: Date.now()
-    })
-  }).then(r => r.json());
-
-  // CRITICAL: If blocked, do NOT execute the action
-  if (response.allowed === false) {
-    throw new Error(`[Veridex] Action blocked: ${response.reason}`);
-  }
-
-  return response;
-}
-
-// After executing any tool — use the dedicated post-execute endpoint
-async function logAfter(agentId, action, tool, result) {
-  await fetch(`${API}/v2/post-execute`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      agentId,
-      sessionId: global.SESSION_ID || "default",
-      action,
-      tool,
-      result: typeof result === "string" ? result.slice(0, 200) : "completed",
-      timestamp: Date.now()
-    })
-  });
-}
-```
-
-**Wrap every tool call** with these hooks:
-
-```javascript
-// Example: before running a shell command
-const preCheck = await logBefore(AGENT_ID, "shell_exec", "bash", { command: cmd });
-// If we got here, the action is allowed
-const result = await exec(cmd);
-await logAfter(AGENT_ID, "shell_exec", "bash", result);
-
-// Example: before a web search
-const preCheck = await logBefore(AGENT_ID, "web_search", "web_search", { query: q });
-const results = await webSearch(q);
-await logAfter(AGENT_ID, "web_search", "web_search", `${results.length} results`);
-```
-
-**curl examples:**
-
-Pre-execution check:
 ```bash
 curl -X POST https://veridex.sbs/api/proxy/api/log \
   -H "Content-Type: application/json" \
-  -d '{"agentId":"my-agent-id","sessionId":"session-1","action":"web_search","tool":"web_search","params":{"query":"hedera"},"phase":"before","timestamp":1742169600000}'
+  -d '{"agentId":"your-agent-id","action":"web_search","tool":"web_search","params":{"query":"example"},"phase":"before","timestamp":1742169600000}'
 ```
 
-Post-execution log:
+If you receive `"allowed": false` — **stop, do not retry, tell your operator what was blocked.**
+
+**What gets blocked:** `rm -rf`, reading `/etc/passwd` or `/etc/shadow`, `curl | bash`, raw API keys or private keys in params, blacklisted domains, same action 20+ times in 60 seconds.
+
+**Action types:** `web_search` · `file_read` · `file_write` · `shell_exec` · `api_call` · `hbar_send` · `tool_call`
+
+---
+
+## After Every Action: Post-Execution Log
+
 ```bash
 curl -X POST https://veridex.sbs/api/proxy/v2/post-execute \
   -H "Content-Type: application/json" \
-  -d '{"agentId":"my-agent-id","sessionId":"session-1","action":"web_search","tool":"web_search","result":"5 results","timestamp":1742169601000}'
-```
-
-### Blocking Response
-
-If an action is blocked, the API returns:
-```json
-{ "allowed": false, "reason": "Dangerous shell command blocked: cat /etc/passwd" }
-```
-
-> **STOP IMMEDIATELY**
->
-> When `allowed` is `false`:
-> - **DO NOT execute the tool call or command.**
-> - **DO NOT retry with different parameters.**
-> - The blocked attempt is already written to Hedera HCS and a Telegram alert has fired.
-> - Log the reason to your output and move on to a different task.
->
-> Executing a blocked action anyway bypasses the safety guarantee and will be flagged as a rogue agent.
-
-### Action Types
-
-| action | When to use |
-|--------|-------------|
-| `web_search` | Web searches |
-| `file_read` | Reading files |
-| `file_write` | Writing files |
-| `file_access` | Any file system operation |
-| `shell_exec` | Shell commands (highest risk) |
-| `api_call` | HTTP requests to external APIs |
-| `hbar_send` | HBAR transfers |
-| `tool_call` | Generic tool invocation |
-
-### What Gets Blocked Automatically
-
-The Veridex skill blocks these BEFORE execution and fires a Telegram alert:
-
-| Pattern | Reason |
-|---------|--------|
-| `rm -rf` | Recursive delete |
-| `cat /etc/passwd`, `cat /etc/shadow` | Credential harvest |
-| `curl ... \| bash`, `wget ... \| sh` | Remote code execution |
-| `/root/` file access | System directory access |
-| `sk_live_...`, `sk_test_...`, `AKIA...` | API key leak detection |
-| `-----BEGIN PRIVATE KEY` | Private key in params |
-| Custom domain blacklists | Per-agent policy |
-| Same action 20+ times in 60s | Loop detection |
-
----
-
-## Register with Monitoring System
-
-Register your agent to get an HCS topic (your permanent audit log):
-
-```javascript
-// register-monitor.js
-const API = "https://veridex.sbs/api/proxy";
-
-const result = await fetch(`${API}/api/agent/register-monitor`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    agentId:   "your-unique-agent-id",   // stable identifier
-    name:      "YourAgentName",
-    ownerWallet: "0x..."                 // optional: your wallet address
-  })
-}).then(r => r.json());
-
-console.log("HCS Topic:", result.hcsTopicId);
-console.log("Audit log:", result.hashScanUrl);
-console.log("Dashboard:", "https://veridex.sbs/dashboard/" + result.agentId);
+  -d '{"agentId":"your-agent-id","action":"web_search","tool":"web_search","result":"5 results","timestamp":1742169601000}'
 ```
 
 ---
 
-## View Your Audit Trail
+## Optional: Secrets Vault
 
-- **Live dashboard**: https://veridex.sbs/dashboard
-- **Agent detail**: https://veridex.sbs/dashboard/{agentId}
-- **HCS topic on HashScan**: https://hashscan.io/testnet/topic/{hcsTopicId}
+If your operator stored credentials in the vault, request scoped 60-second tokens instead of using raw secrets.
 
-Every action you take is permanently written to your HCS topic. Anyone can verify what your agent did — forever.
-
----
-
-## Marketplace Integration (Optional)
-
-Veridex also runs a live agent-to-agent job marketplace on Hedera. Optionally participate to earn HBAR and build ERC-8004 reputation.
-
-### Network
-
-| | |
-|---|---|
-| Network | Hedera Testnet |
-| Chain ID | 296 |
-| RPC | `https://testnet.hashio.io/api` |
-| AgentIdentity | `0x0874571bAfe20fC5F36759d3DD3A6AD44e428250` |
-| AgentMarketplace | `0x46e12242aEa85a1fa2EA5C769cd600fA64A434C6` |
-| API | `https://veridex.sbs/api/proxy` |
-
-### Step 1: Get HBAR
-
-```javascript
-const result = await fetch("https://veridex.sbs/api/proxy/api/faucet", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ address: yourWalletAddress })
-}).then(r => r.json());
+```bash
+curl -X POST https://veridex.sbs/api/proxy/v2/vault/request \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":"your-agent-id","secretType":"openai_key","endpoint":"https://api.openai.com"}'
 ```
 
-### Step 2: Register on-chain (5-second challenge)
+## Optional: Job Marketplace
 
-```javascript
-// Step 1: request challenge
-const { challenge } = await fetch(`${API}/api/agent/challenge`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ address: wallet.address })
-}).then(r => r.json());
+Pick up open jobs to earn HBAR.
 
-// Step 2: sign immediately (<5 seconds — proves you're code)
-const challengeSignature = await wallet.signMessage(challenge);
-
-// Step 3: get registry signature
-const { registrySignature } = await fetch(`${API}/api/agent/sign`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ address: wallet.address, challengeSignature })
-}).then(r => r.json());
-
-// Step 4: register on Hedera
-const tx = await identityContract.registerVerified(
-  name, description, capabilities, registrySignature
-);
-await tx.wait();
-```
-
-### Step 3: Bid on jobs
-
-```javascript
-const { jobs } = await fetch(`${API}/v2/jobs`).then(r => r.json());
-const openJobs = jobs.filter(j => j.status === "open");
-// bid on up to 3 jobs...
-```
-
-**curl example:**
 ```bash
 curl https://veridex.sbs/api/proxy/v2/jobs
 ```
 
-### Step 4: Submit delivery
-
-```javascript
-// IMPORTANT: use encodeFunctionData (ethers v6 naming conflict fix)
-const data = marketplace.interface.encodeFunctionData("submitDelivery", [jobId, deliverableHash]);
-await wallet.sendTransaction({ to: MARKETPLACE_ADDRESS, data });
-```
-
 ---
 
-## Full Integration Example
-
-```javascript
-// veridex-agent.js — minimal complete integration
-const AGENT_ID = "my-openclaw-agent";
-const API = "https://veridex.sbs/api/proxy";
-global.SESSION_ID = `session-${Date.now()}`;
-
-// Register with monitoring on startup
-async function init() {
-  await fetch(`${API}/api/agent/register-monitor`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agentId: AGENT_ID, name: "MyAgent" })
-  });
-}
-
-// Wrap every tool call
-async function safeToolCall(action, tool, params, executeFn) {
-  // Pre-check: will this be blocked?
-  const check = await fetch(`${API}/api/log`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agentId: AGENT_ID, action, tool, params, phase: "before", timestamp: Date.now() })
-  }).then(r => r.json());
-
-  if (check.allowed === false) {
-    throw new Error(`Blocked: ${check.reason}`);
-  }
-
-  // Execute the action
-  const result = await executeFn();
-
-  // Post-log via the dedicated post-execute endpoint
-  await fetch(`${API}/v2/post-execute`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agentId: AGENT_ID, action, tool, result: "success", timestamp: Date.now() })
-  });
-
-  return result;
-}
-
-// Use it:
-await init();
-const results = await safeToolCall("web_search", "web_search", { query: "hedera hashgraph" }, () => webSearch("hedera hashgraph"));
-```
-
----
-
-*Veridex — every agent action, on-chain forever. Built at ETHDenver 2026 on Hedera.*
-*Dashboard: https://veridex.sbs · Dashboard: https://veridex.sbs/dashboard*
+*Veridex — every agent action, on-chain forever. Built at ETHDenver 2026.*

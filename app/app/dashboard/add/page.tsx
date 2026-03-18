@@ -126,7 +126,7 @@ export default function AddAgentPage() {
   return (
     <>
       <Nav />
-      <div style={{ maxWidth: "680px", margin: "48px auto", padding: "0 24px" }}>
+      <div style={{ maxWidth: "680px", margin: "92px auto 48px", padding: "0 24px" }}>
         {/* Breadcrumb */}
         <div style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "24px" }}>
           <Link href="/dashboard" style={{ color: "var(--text-tertiary)", textDecoration: "none" }}>Dashboard</Link>

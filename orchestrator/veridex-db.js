@@ -94,6 +94,7 @@ function initSchema() {
   try { db.exec("ALTER TABLE agents ADD COLUMN reputation_score INTEGER NOT NULL DEFAULT 500"); } catch {}
   try { db.exec("ALTER TABLE agents ADD COLUMN safety_score INTEGER NOT NULL DEFAULT 1000"); } catch {}
   try { db.exec("ALTER TABLE agents ADD COLUMN telegram_chat_id TEXT"); } catch {}
+  try { db.exec("ALTER TABLE agents ADD COLUMN claim_token TEXT"); } catch {}
   ensureJobsTable();
   try { db.exec(`CREATE TABLE IF NOT EXISTS agent_delegations (
     id TEXT PRIMARY KEY,
