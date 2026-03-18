@@ -1371,3 +1371,24 @@ process.on("SIGINT", () => {
   console.log("\n\nShutting down gracefully...");
   process.exit(0);
 });
+
+// ── Seed demo agents on startup ───────────────────────────────────────────────
+// Ensures the 5 reference agents always exist in the DB on Railway
+(function seedDemoAgents() {
+  const DEMO_AGENTS = [
+    { id: "research-bot-demo",  name: "ResearchBot",  wallet: "0x53776769f4b9554c51D0852a1Cb11C1eaB4b92AD", hcs: "0.0.8228693" },
+    { id: "trading-bot-demo",   name: "TradingBot",   wallet: "0xDA50F7472eC8984F4fAf16BcF6F1f6e0468b896E", hcs: "0.0.8228695" },
+    { id: "rogue-bot-demo",     name: "RogueBot",     wallet: "0xD21e831eF771277E7d5c05e17583210b9A25134e", hcs: "0.0.8228696" },
+    { id: "data-bot-demo",      name: "DataBot",      wallet: process.env.DATA_BOT_ADDRESS  || "0xd9197748A698cF4a7B2FE82cB9AA3ed0aB60759d", hcs: "0.0.8268065" },
+    { id: "api-bot-demo",       name: "APIBot",       wallet: process.env.API_BOT_ADDRESS   || "0x16f67cDF5F06F832e9B43E067bfb56e3D4250624", hcs: "0.0.8268072" },
+  ];
+  for (const a of DEMO_AGENTS) {
+    try {
+      const existing = db.getAgent(a.id);
+      if (!existing) {
+        db.upsertAgent({ id: a.id, name: a.name, ownerWallet: a.wallet, hcsTopicId: a.hcs });
+        console.log(`[seed] Created demo agent: ${a.id}`);
+      }
+    } catch (e) { console.error(`[seed] Failed to seed ${a.id}:`, e.message); }
+  }
+})();

@@ -93,6 +93,7 @@ function initSchema() {
   try { db.exec("ALTER TABLE agents ADD COLUMN hcs_encryption_key TEXT"); } catch {}
   try { db.exec("ALTER TABLE agents ADD COLUMN reputation_score INTEGER NOT NULL DEFAULT 500"); } catch {}
   try { db.exec("ALTER TABLE agents ADD COLUMN telegram_chat_id TEXT"); } catch {}
+  ensureJobsTable();
 }
 
 function ensureJobsTable() {
