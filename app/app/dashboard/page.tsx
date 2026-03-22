@@ -306,7 +306,6 @@ export default function DashboardPage() {
         )}
 
         {/* Coming Soon features removed */}
-        )}
 
       </div>
       <style>{`
