@@ -47,3 +47,4 @@ logs/job-events.json
 
 # Temporary files
 CLEANUP_INSTRUCTIONS.txt
+.synthesis-credentials

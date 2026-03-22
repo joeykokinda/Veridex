@@ -785,6 +785,105 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* ── WHY OPERATORS SET RULES ──────────────────────────────────────── */}
+        <section style={{ borderTop:"1px solid var(--border)", padding:"72px 24px" }}>
+          <div style={{ maxWidth:"820px", margin:"0 auto" }}>
+            <p style={{ fontSize:"11px", fontFamily:"monospace", color:"var(--text-tertiary)", marginBottom:"14px", textTransform:"uppercase" as const, letterSpacing:"1px" }}>Why operators set rules</p>
+            <h2 style={{ fontSize:"clamp(20px,3.5vw,30px)", fontWeight:800, lineHeight:1.2, marginBottom:"12px", letterSpacing:"-0.5px" }}>
+              Your agent has your keys. Define exactly what it can do.
+            </h2>
+            <p style={{ fontSize:"16px", color:"var(--text-tertiary)", lineHeight:1.7, marginBottom:"48px", maxWidth:"580px" }}>
+              Without rules, you trust the agent completely.<br />
+              With Veridex, you define the boundary. Hedera enforces it.
+            </p>
+            <div className="rules-grid" style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:"16px", marginBottom:"36px" }}>
+
+              {/* Card 1: Wallet drain */}
+              <div style={{ background:"#09090b", border:"1px solid var(--border)", borderRadius:"12px", padding:"24px" }}>
+                {/* icon: circle with minus bar */}
+                <div style={{ width:32, height:32, borderRadius:"50%", border:"1.5px solid rgba(239,68,68,0.45)", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:"16px" }}>
+                  <div style={{ width:12, height:2, background:"rgba(239,68,68,0.65)", borderRadius:"1px" }}/>
+                </div>
+                <div style={{ fontSize:"15px", fontWeight:700, color:"var(--text-primary)", marginBottom:"8px" }}>Wallet drain protection</div>
+                <div style={{ fontSize:"13px", color:"var(--text-tertiary)", lineHeight:1.6, marginBottom:"12px" }}>Agent manages your crypto. No limit means no floor.</div>
+                <div style={{ background:"rgba(129,140,248,0.06)", border:"1px solid rgba(129,140,248,0.15)", borderRadius:"6px", padding:"8px 10px", fontFamily:"monospace", fontSize:"12px", color:"#818cf8", marginBottom:"12px" }}>
+                  cap_hbar: 10
+                </div>
+                <div style={{ fontSize:"12px", color:"var(--text-tertiary)", display:"flex", gap:"6px", alignItems:"flex-start" }}>
+                  <div style={{ width:6, height:6, borderRadius:"1px", background:"#ef4444", flexShrink:0, marginTop:"3px" }}/>
+                  <span>Any transaction over 10 HBAR — before it executes</span>
+                </div>
+              </div>
+
+              {/* Card 2: Data exfiltration */}
+              <div style={{ background:"#09090b", border:"1px solid var(--border)", borderRadius:"12px", padding:"24px" }}>
+                {/* icon: right-pointing arrow */}
+                <div style={{ width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:"16px" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:"2px" }}>
+                    <div style={{ width:14, height:2, background:"rgba(245,158,11,0.6)", borderRadius:"1px" }}/>
+                    <div style={{ width:0, height:0, borderTop:"5px solid transparent", borderBottom:"5px solid transparent", borderLeft:"7px solid rgba(245,158,11,0.6)" }}/>
+                  </div>
+                </div>
+                <div style={{ fontSize:"15px", fontWeight:700, color:"var(--text-primary)", marginBottom:"8px" }}>Data exfiltration</div>
+                <div style={{ fontSize:"13px", color:"var(--text-tertiary)", lineHeight:1.6, marginBottom:"12px" }}>Agent has your codebase. It can POST it anywhere.</div>
+                <div style={{ background:"rgba(129,140,248,0.06)", border:"1px solid rgba(129,140,248,0.15)", borderRadius:"6px", padding:"8px 10px", fontFamily:"monospace", fontSize:"12px", color:"#818cf8", marginBottom:"12px" }}>
+                  blacklist_domain: pastebin.com
+                </div>
+                <div style={{ fontSize:"12px", color:"var(--text-tertiary)", display:"flex", gap:"6px", alignItems:"flex-start" }}>
+                  <div style={{ width:6, height:6, borderRadius:"1px", background:"#ef4444", flexShrink:0, marginTop:"3px" }}/>
+                  <span>Any outbound call to blacklisted endpoints</span>
+                </div>
+              </div>
+
+              {/* Card 3: Credential leaking */}
+              <div style={{ background:"#09090b", border:"1px solid var(--border)", borderRadius:"12px", padding:"24px" }}>
+                {/* icon: rotated square (diamond) */}
+                <div style={{ width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:"16px" }}>
+                  <div style={{ width:13, height:13, border:"1.5px solid rgba(239,68,68,0.5)", transform:"rotate(45deg)", borderRadius:"2px" }}/>
+                </div>
+                <div style={{ fontSize:"15px", fontWeight:700, color:"var(--text-primary)", marginBottom:"8px" }}>Credential leaking</div>
+                <div style={{ fontSize:"13px", color:"var(--text-tertiary)", lineHeight:1.6, marginBottom:"12px" }}>Agent handles API responses containing live keys.</div>
+                <div style={{ background:"rgba(129,140,248,0.06)", border:"1px solid rgba(129,140,248,0.15)", borderRadius:"6px", padding:"8px 10px", fontFamily:"monospace", fontSize:"12px", color:"#818cf8", marginBottom:"12px" }}>
+                  regex_output: sk_live_.*
+                </div>
+                <div style={{ fontSize:"12px", color:"var(--text-tertiary)", display:"flex", gap:"6px", alignItems:"flex-start" }}>
+                  <div style={{ width:6, height:6, borderRadius:"1px", background:"#ef4444", flexShrink:0, marginTop:"3px" }}/>
+                  <span>Any output matching your secret key pattern</span>
+                </div>
+              </div>
+
+              {/* Card 4: Scope creep */}
+              <div style={{ background:"#09090b", border:"1px solid var(--border)", borderRadius:"12px", padding:"24px" }}>
+                {/* icon: 2x2 dot grid */}
+                <div style={{ width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:"16px" }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"4px" }}>
+                    {[0,1,2,3].map(i=>(
+                      <div key={i} style={{ width:5, height:5, borderRadius:"1px", background:i===3?"rgba(129,140,248,0.7)":"rgba(129,140,248,0.3)" }}/>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ fontSize:"15px", fontWeight:700, color:"var(--text-primary)", marginBottom:"8px" }}>Scope creep</div>
+                <div style={{ fontSize:"13px", color:"var(--text-tertiary)", lineHeight:1.6, marginBottom:"12px" }}>Research agent starts running shell commands.</div>
+                <div style={{ background:"rgba(129,140,248,0.06)", border:"1px solid rgba(129,140,248,0.15)", borderRadius:"6px", padding:"8px 10px", fontFamily:"monospace", fontSize:"12px", color:"#818cf8", marginBottom:"12px" }}>
+                  blacklist_command: curl, bash
+                </div>
+                <div style={{ fontSize:"12px", color:"var(--text-tertiary)", display:"flex", gap:"6px", alignItems:"flex-start" }}>
+                  <div style={{ width:6, height:6, borderRadius:"1px", background:"#ef4444", flexShrink:0, marginTop:"3px" }}/>
+                  <span>Any shell execution outside the agent&apos;s job</span>
+                </div>
+              </div>
+
+            </div>
+            <p style={{ fontSize:"14px", color:"var(--text-secondary)", lineHeight:1.7, marginBottom:"24px", maxWidth:"560px" }}>
+              The agent cannot lie about what it did. The block is on Hedera<br />
+              before the agent knows it was blocked.
+            </p>
+            <Link href="/dashboard" style={{ display:"inline-flex", alignItems:"center", gap:"8px", background:"transparent", border:"1px solid #10b981", borderRadius:"8px", padding:"11px 22px", fontSize:"14px", fontWeight:600, color:"#10b981", textDecoration:"none" }}>
+              Set your first rule →
+            </Link>
+          </div>
+        </section>
+
         {/* ── COST COMPARISON (moved above bento) ──────────────────────────── */}
         <section style={{ borderTop:"1px solid var(--border)", padding:"64px 24px" }}>
           <div style={{ maxWidth:"600px", margin:"0 auto" }}>

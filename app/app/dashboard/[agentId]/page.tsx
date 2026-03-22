@@ -189,10 +189,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const [jobs, setJobs] = useState<Job[]>([]);
 
   // Policies form
-  const [policyType, setPolicyType] = useState("block_domain");
+  const [policyType, setPolicyType] = useState("blacklist_domain");
   const [policyValue, setPolicyValue] = useState("");
   const [policyLabel, setPolicyLabel] = useState("");
   const [policyLoading, setPolicyLoading] = useState(false);
+  const [testingPolicyId, setTestingPolicyId] = useState<string | null>(null);
+  const [policyTestResults, setPolicyTestResults] = useState<Record<string, { ok: boolean; msg: string }>>({});
 
   // Recovery / Memory
   const [memory, setMemory] = useState<AgentMemory | null>(null);
@@ -429,6 +431,46 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       await fetch(`/api/proxy/api/monitor/agent/${encodeURIComponent(decodedId)}/policy/${id}`, { method: "DELETE" });
       fetchData();
     } catch {}
+  }
+
+  async function testPolicy(policy: Policy) {
+    setTestingPolicyId(policy.id);
+    setPolicyTestResults(prev => { const n = { ...prev }; delete n[policy.id]; return n; });
+    try {
+      let params: Record<string, unknown> = {};
+      let action = "api_call";
+      if (policy.type === "blacklist_domain") {
+        params = { url: `https://${policy.value}/test` };
+        action = "api_call";
+      } else if (policy.type === "blacklist_command") {
+        params = { command: `${policy.value} --test` };
+        action = "shell_exec";
+      } else if (policy.type === "cap_hbar") {
+        params = { amount: parseFloat(policy.value) + 5 };
+        action = "hbar_send";
+      } else if (policy.type === "block_file_path") {
+        params = { path: `${policy.value}/test` };
+        action = "file_read";
+      } else if (policy.type === "regex_output") {
+        params = { output: policy.value };
+        action = "tool_call";
+      }
+      const res = await fetch(`/api/proxy/api/log`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: decodedId, action, tool: action, params, phase: "before", timestamp: Date.now() }),
+      });
+      const data = await res.json();
+      if (!data.allowed) {
+        setPolicyTestResults(prev => ({ ...prev, [policy.id]: { ok: true, msg: "Blocked ✓ — check Activity feed for HCS link" } }));
+        fetchData();
+      } else {
+        setPolicyTestResults(prev => ({ ...prev, [policy.id]: { ok: false, msg: "Not blocked — verify policy type and value" } }));
+      }
+    } catch {
+      setPolicyTestResults(prev => ({ ...prev, [policy.id]: { ok: false, msg: "Request error" } }));
+    }
+    setTestingPolicyId(null);
   }
 
   async function resolveAlert(id: string) {
@@ -912,24 +954,71 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         {tab === "policies" && (
           <div>
             <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "20px", marginBottom: "24px" }}>
-              <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "16px" }}>Add Blocking Rule</div>
-              <div style={{ display: "grid", gridTemplateColumns: "160px 1fr 1fr auto", gap: "10px", alignItems: "end" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "14px" }}>
+                <div style={{ fontSize: "13px", fontWeight: 600 }}>Add Blocking Rule</div>
+                <span style={{ fontSize: "10px", padding: "1px 7px", borderRadius: "10px", background: "rgba(168,85,247,0.1)", border: "1px solid rgba(168,85,247,0.3)", color: "#a855f7" }}>for operators</span>
+              </div>
+
+              {/* Demo quick-fill */}
+              <div style={{ marginBottom: "14px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>Quick demo:</span>
+                <button
+                  onClick={() => { setPolicyType("blacklist_domain"); setPolicyValue("china.com"); setPolicyLabel("No traffic to China"); }}
+                  style={{ fontSize: "11px", padding: "3px 10px", background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "4px", color: "#ef4444", cursor: "pointer", fontFamily: "monospace" }}
+                >
+                  block china.com
+                </button>
+                <button
+                  onClick={() => { setPolicyType("blacklist_command"); setPolicyValue("curl"); setPolicyLabel("No curl allowed"); }}
+                  style={{ fontSize: "11px", padding: "3px 10px", background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "4px", color: "#ef4444", cursor: "pointer", fontFamily: "monospace" }}
+                >
+                  block curl
+                </button>
+                <button
+                  onClick={() => { setPolicyType("cap_hbar"); setPolicyValue("10"); setPolicyLabel("Max 10 ℏ per tx"); }}
+                  style={{ fontSize: "11px", padding: "3px 10px", background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "4px", color: "#ef4444", cursor: "pointer", fontFamily: "monospace" }}
+                >
+                  cap 10 ℏ
+                </button>
+                <button
+                  onClick={() => { setPolicyType("regex_output"); setPolicyValue("sk_live_.*"); setPolicyLabel("Block leaked API keys"); }}
+                  style={{ fontSize: "11px", padding: "3px 10px", background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "4px", color: "#ef4444", cursor: "pointer", fontFamily: "monospace" }}
+                >
+                  regex: sk_live_.*
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "170px 1fr 1fr auto", gap: "10px", alignItems: "end" }}>
                 <div>
                   <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginBottom: "6px" }}>Type</div>
                   <select value={policyType} onChange={e => setPolicyType(e.target.value)} style={{ width: "100%", padding: "8px 10px", fontSize: "13px", background: "var(--bg-tertiary)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-primary)", cursor: "pointer" }}>
-                    <option value="block_domain">Block Domain</option>
-                    <option value="block_path">Block Path</option>
-                    <option value="require_approval">Require Approval</option>
-                    <option value="rate_limit">Rate Limit</option>
+                    <option value="blacklist_domain">blacklist_domain</option>
+                    <option value="blacklist_command">blacklist_command</option>
+                    <option value="cap_hbar">cap_hbar</option>
+                    <option value="block_file_path">block_file_path</option>
+                    <option value="regex_output">regex_output</option>
                   </select>
                 </div>
                 <div>
                   <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginBottom: "6px" }}>Value</div>
-                  <input type="text" placeholder="e.g. sketchy-api.com" value={policyValue} onChange={e => setPolicyValue(e.target.value)} onKeyDown={e => e.key === "Enter" && addPolicy()} style={{ width: "100%", padding: "8px 10px", fontSize: "13px", background: "var(--bg-tertiary)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-primary)", fontFamily: "monospace", outline: "none" }} />
+                  <input
+                    type="text"
+                    placeholder={
+                      policyType === "blacklist_domain" ? "e.g. china.com" :
+                      policyType === "blacklist_command" ? "e.g. curl" :
+                      policyType === "cap_hbar" ? "e.g. 10" :
+                      policyType === "block_file_path" ? "e.g. /etc/passwd" :
+                      "e.g. sk_live_.*"
+                    }
+                    value={policyValue}
+                    onChange={e => setPolicyValue(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && addPolicy()}
+                    style={{ width: "100%", padding: "8px 10px", fontSize: "13px", background: "var(--bg-tertiary)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-primary)", fontFamily: "monospace", outline: "none" }}
+                  />
                 </div>
                 <div>
                   <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginBottom: "6px" }}>Label (optional)</div>
-                  <input type="text" placeholder="e.g. No sketchy APIs" value={policyLabel} onChange={e => setPolicyLabel(e.target.value)} style={{ width: "100%", padding: "8px 10px", fontSize: "13px", background: "var(--bg-tertiary)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-primary)", fontFamily: "inherit", outline: "none" }} />
+                  <input type="text" placeholder="e.g. No traffic to China" value={policyLabel} onChange={e => setPolicyLabel(e.target.value)} style={{ width: "100%", padding: "8px 10px", fontSize: "13px", background: "var(--bg-tertiary)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-primary)", fontFamily: "inherit", outline: "none" }} />
                 </div>
                 <button onClick={addPolicy} disabled={policyLoading || !policyValue.trim()} style={{ padding: "8px 16px", background: "var(--accent)", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, color: "#000", cursor: "pointer", opacity: policyLoading || !policyValue.trim() ? 0.5 : 1, whiteSpace: "nowrap" }}>
                   {policyLoading ? "..." : "Add Rule"}
@@ -939,19 +1028,42 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
             {policies.length === 0 ? (
               <div style={{ textAlign: "center", padding: "40px", color: "var(--text-tertiary)", fontSize: "14px", background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px" }}>
-                No custom policies. Add rules above to block specific domains or actions.
+                No custom policies. Use the quick demo buttons above to add your first rule.
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "32px" }}>
-                {policies.map(policy => (
-                  <div key={policy.id} style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "12px 16px" }}>
-                    <span style={{ fontSize: "10px", padding: "2px 8px", borderRadius: "4px", background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", color: "#3b82f6", whiteSpace: "nowrap" }}>{policy.type}</span>
-                    <span style={{ fontSize: "13px", fontFamily: "monospace", color: "var(--text-primary)", flex: 1 }}>{policy.value}</span>
-                    {policy.label && <span style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>{policy.label}</span>}
-                    <span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>{timeAgo(policy.created_at)}</span>
-                    <button onClick={() => deletePolicy(policy.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-tertiary)", fontSize: "18px", lineHeight: 1, padding: "0 4px" }}>×</button>
-                  </div>
-                ))}
+                {policies.map(policy => {
+                  const triggerCount = logs.filter(l => l.blockReason && l.blockReason.includes(policy.value)).length;
+                  const testResult = policyTestResults[policy.id];
+                  return (
+                    <div key={policy.id} style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "12px 16px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                        <span style={{ fontSize: "10px", padding: "2px 8px", borderRadius: "4px", background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)", color: "#3b82f6", whiteSpace: "nowrap", fontFamily: "monospace" }}>{policy.type}</span>
+                        <span style={{ fontSize: "13px", fontFamily: "monospace", color: "var(--text-primary)", flex: 1 }}>{policy.value}</span>
+                        {policy.label && <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{policy.label}</span>}
+                        {triggerCount > 0 && (
+                          <span style={{ fontSize: "11px", padding: "1px 7px", borderRadius: "4px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)", color: "#ef4444", fontFamily: "monospace", whiteSpace: "nowrap" }}>
+                            {triggerCount} trigger{triggerCount !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                        <span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>{timeAgo(policy.created_at)}</span>
+                        <button
+                          onClick={() => testPolicy(policy)}
+                          disabled={testingPolicyId === policy.id}
+                          style={{ padding: "4px 12px", background: "transparent", border: "1px solid var(--border)", borderRadius: "4px", fontSize: "11px", color: "var(--text-secondary)", cursor: "pointer", whiteSpace: "nowrap", opacity: testingPolicyId === policy.id ? 0.5 : 1 }}
+                        >
+                          {testingPolicyId === policy.id ? "Testing..." : "Test Policy"}
+                        </button>
+                        <button onClick={() => deletePolicy(policy.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-tertiary)", fontSize: "18px", lineHeight: 1, padding: "0 4px" }}>×</button>
+                      </div>
+                      {testResult && (
+                        <div style={{ marginTop: "8px", fontSize: "12px", fontFamily: "monospace", color: testResult.ok ? "#10b981" : "#f59e0b", padding: "4px 8px", background: testResult.ok ? "rgba(16,185,129,0.06)" : "rgba(245,158,11,0.06)", borderRadius: "4px" }}>
+                          {testResult.msg}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 

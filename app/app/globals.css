@@ -458,6 +458,10 @@ a:hover {
   .two-col {
     grid-template-columns: 1fr;
   }
+
+  .rules-grid {
+    grid-template-columns: 1fr !important;
+  }
   
   .stats-grid {
     grid-template-columns: 1fr;

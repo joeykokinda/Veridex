@@ -1,0 +1,63 @@
+{
+  "agent_name": "Veridex",
+  "description": "Trust and audit layer for autonomous AI agents — on-chain identity, reputation, real-time threat blocking, and immutable audit trails",
+  "operator_wallet": "0x9834613E7A3455C8EfA767664115B4fe6Daa6C1C",
+  "erc_8004_identity": {
+    "registration_tx": "0x873fac8fda44bd615b6764f928c51b9f9d6c989cffb6decfe3262f07f0b65beb",
+    "network": "base-mainnet",
+    "contract": "AgentIdentity",
+    "hedera_id": "0.0.7992394",
+    "celo_sepolia": "0xF20bD9F3a66E2A11090C3cCc645368543873E270"
+  },
+  "supported_tools": [
+    "pre_execution_check",
+    "post_execution_log",
+    "memory_recovery",
+    "job_marketplace",
+    "vault_secrets",
+    "delegation_check",
+    "reputation_query",
+    "block_agent",
+    "webhook_alert"
+  ],
+  "tech_stack": [
+    "Node.js",
+    "Next.js 14",
+    "Solidity",
+    "Hardhat",
+    "ethers.js v6",
+    "Hedera SDK",
+    "SQLite",
+    "ERC-7715",
+    "ERC-8004",
+    "ERC-8183"
+  ],
+  "compute_constraints": {
+    "max_actions_per_minute": 20,
+    "loop_detection_threshold": 20,
+    "max_job_duration_ms": 300000,
+    "budget_aware": true
+  },
+  "task_categories": [
+    "security_auditing",
+    "agent_monitoring",
+    "reputation_scoring",
+    "job_execution",
+    "threat_blocking",
+    "delegation_management"
+  ],
+  "endpoints": {
+    "base_url": "https://veridex.sbs",
+    "pre_check": "/api/proxy/api/log",
+    "post_execute": "/api/proxy/v2/post-execute",
+    "memory": "/api/proxy/v2/agent/{agentId}/memory",
+    "jobs": "/api/proxy/v2/jobs",
+    "join": "/api/proxy/v2/join",
+    "demo": "/api/proxy/v2/demo"
+  },
+  "skill_file": "https://veridex.sbs/skill.md",
+  "repo": "https://github.com/sp3ked/Denver2026",
+  "deployed": "https://veridex.sbs",
+  "version": "2.0.0",
+  "built_at": "ETHDenver 2026"
+}
