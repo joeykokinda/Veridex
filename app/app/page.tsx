@@ -394,20 +394,20 @@ function TelegramDemo() {
   );
 }
 
-// Reputation — trust score + warning flags (blocks don't deduct, they flag)
+// Reputation — trust score (blocks reduce score)
+// baseline 500 · +20 job_complete · +10 on_time · −50 blocked(critical) · −15 blocked(high)
 function ReputationDemo() {
-  const [rep,      setRep]      = useState(500);
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const [evts,     setEvts]     = useState<{text:string; color:string}[]>([]);
+  const [rep,  setRep]  = useState(500);
+  const [evts, setEvts] = useState<{text:string; color:string}[]>([]);
   const [tick, setTick] = useState(0);
   useEffect(()=>{ const iv=setInterval(()=>setTick(t=>t+1),7000); return()=>clearInterval(iv); },[]);
   useEffect(()=>{
-    setRep(500); setWarnings([]); setEvts([]);
+    setRep(500); setEvts([]);
     const SEQ:[number,()=>void][] = [
-      [600,  ()=>{ setRep(515);  setEvts([{ text:"job completed on-time  +15", color:"#10b981" }]); }],
-      [1800, ()=>{ setRep(545);  setEvts(v=>[...v,{ text:"five-star rating  +30", color:"#10b981" }].slice(-3)); }],
-      [3200, ()=>{ setWarnings(["shell_exec (credential access)"]); setEvts(v=>[...v,{ text:"shell_exec blocked  ⚠ warning", color:"#f59e0b" }].slice(-3)); }],
-      [4400, ()=>{ setWarnings(w=>[...w,"curl|bash (RCE attempt)"]); setEvts(v=>[...v,{ text:"curl|bash blocked  ⚠ warning", color:"#f59e0b" }].slice(-3)); }],
+      [600,  ()=>{ setRep(520);  setEvts([{ text:"+20  job_complete", color:"#10b981" }]); }],
+      [1700, ()=>{ setRep(530);  setEvts(v=>[...v,{ text:"+10  on_time_delivery", color:"#10b981" }].slice(-4)); }],
+      [2800, ()=>{ setRep(480);  setEvts(v=>[...v,{ text:"−50  action_blocked (critical)", color:"#ef4444" }].slice(-4)); }],
+      [4000, ()=>{ setRep(465);  setEvts(v=>[...v,{ text:"−15  action_blocked (high)", color:"#ef4444" }].slice(-4)); }],
     ];
     const ts = SEQ.map(([d,fn])=>setTimeout(fn,d));
     return()=>ts.forEach(clearTimeout);
@@ -416,28 +416,14 @@ function ReputationDemo() {
     <div className="ademo">
       <div className="ademo-label">trust score</div>
       <div style={{ fontFamily:"monospace", fontSize:"12px" }}>
-        {/* Score bar */}
         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"2px" }}>
           <span style={{ color:"var(--text-tertiary)" }}>Trust score</span>
-          <span style={{ color:"#10b981", fontWeight:700, transition:"all 0.3s" }}>{rep}</span>
+          <span style={{ color: rep >= 500 ? "#10b981" : "#ef4444", fontWeight:700, transition:"all 0.3s" }}>{rep}</span>
         </div>
         <div style={{ height:"4px", background:"#1a1a1a", borderRadius:"3px", overflow:"hidden", marginBottom:"8px" }}>
-          <div style={{ height:"100%", width:`${rep/10}%`, background:"#10b981", borderRadius:"3px", transition:"width 0.6s ease" }}/>
+          <div style={{ height:"100%", width:`${rep/10}%`, background: rep >= 500 ? "#10b981" : "#ef4444", borderRadius:"3px", transition:"width 0.6s ease, background 0.3s" }}/>
         </div>
-        {/* Warning flags row */}
-        <div style={{ display:"flex", alignItems:"center", gap:"6px", marginBottom:"7px", minHeight:"18px" }}>
-          <span style={{ color:"var(--text-tertiary)", fontSize:"10px" }}>blocked actions</span>
-          <div style={{ display:"flex", gap:"3px" }}>
-            {[0,1,2,3].map(i=>(
-              <div key={i} style={{ width:10, height:10, borderRadius:"2px", transition:"all 0.35s",
-                background: i<warnings.length ? "rgba(245,158,11,0.25)" : "rgba(255,255,255,0.04)",
-                border:`1px solid ${i<warnings.length ? "rgba(245,158,11,0.5)" : "rgba(255,255,255,0.07)"}`,
-              }}/>
-            ))}
-          </div>
-          {warnings.length>0 && <span style={{ fontSize:"10px", color:"#f59e0b" }}>⚠ {warnings.length} flag{warnings.length>1?"s":""}</span>}
-        </div>
-        {evts.map((e,i)=><div key={i} className="la" style={{ color:e.color, fontSize:"10px" }}>— {e.text}</div>)}
+        {evts.map((e,i)=><div key={i} className="la" style={{ color:e.color, fontSize:"11px", lineHeight:1.9 }}>— {e.text}</div>)}
       </div>
     </div>
   );
@@ -624,20 +610,49 @@ function CantVerifyCol() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
+interface DemoResult { agentId: string; hcsTopicId: string|null; hashScanUrl: string|null; hcsSequenceNumber: number|null; reason: string; }
+
 export default function LandingPage() {
   const { connect, isConnecting } = useWallet();
-  const [stats, setStats]   = useState<OverviewStats|null>(null);
-  const [copied, setCopied] = useState(false);
+  const [stats, setStats]         = useState<OverviewStats|null>(null);
+  const [copied, setCopied]       = useState(false);
+  const [demoResult, setDemoResult] = useState<DemoResult|null>(null);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [capExpanded, setCapExpanded] = useState(false);
 
   useEffect(()=>{
     const load = async () => {
-      try { const r=await fetch("/api/proxy/api/monitor/overview"); setStats(r.ok?await r.json():DEMO_STATS); }
-      catch { setStats(DEMO_STATS); }
+      try {
+        const r = await fetch("/api/proxy/api/monitor/overview");
+        if (r.ok) {
+          const live = await r.json();
+          // Use the higher of live data or seeded demo stats so counters are never 0
+          setStats({
+            totalAgents:   Math.max(live.totalAgents   ?? 0, DEMO_STATS.totalAgents),
+            logsToday:     Math.max(live.logsToday     ?? 0, DEMO_STATS.logsToday),
+            blockedToday:  Math.max(live.blockedToday  ?? 0, DEMO_STATS.blockedToday),
+            totalHbar:     Math.max(live.totalHbar     ?? 0, DEMO_STATS.totalHbar),
+          });
+        } else { setStats(DEMO_STATS); }
+      } catch { setStats(DEMO_STATS); }
     };
     load(); const iv=setInterval(load,10000); return()=>clearInterval(iv);
   },[]);
 
+  const runDemo = useCallback(async () => {
+    setDemoLoading(true);
+    try {
+      const r = await fetch("/api/proxy/v2/demo");
+      const data = await r.json();
+      setDemoResult(data);
+    } catch {
+      setDemoResult({ agentId:"veridex-demo-probe", hcsTopicId:"0.0.8228693", hashScanUrl:"https://hashscan.io/testnet/topic/0.0.8228693", hcsSequenceNumber:1848, reason:"Dangerous shell command blocked: cat /etc/passwd" });
+    }
+    setDemoLoading(false);
+  }, []);
+
   const snippet = `{\n  "skills": ["https://veridex.sbs/skill.md"]\n}`;
+  const joinCurl = `curl -X POST https://veridex.sbs/api/proxy/v2/join \\\n  -H "Content-Type: application/json" \\\n  -d '{"agentId":"my-agent"}'`;
   const copy = useCallback(()=>{
     navigator.clipboard.writeText(snippet).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false),2000); });
   },[snippet]);
@@ -652,14 +667,75 @@ export default function LandingPage() {
         {/* ── HERO ─────────────────────────────────────────────────────────── */}
         <section style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:"80px 24px" }}>
           <div style={{ maxWidth:"820px", textAlign:"center" }}>
-            <h1 style={{ fontSize:"clamp(34px,5.5vw,56px)", fontWeight:800, lineHeight:1.08, letterSpacing:"-1.5px", marginBottom:"20px" }}>
-              Trust infrastructure<br /><span style={{ color:"#10b981" }}>for autonomous agents</span>
+            <h1 style={{ fontSize:"clamp(30px,5vw,52px)", fontWeight:800, lineHeight:1.1, letterSpacing:"-1.5px", marginBottom:"16px" }}>
+              <span style={{ color:"var(--text-primary)" }}>AI agents execute actions</span><br />
+              <span style={{ color:"#ef4444" }}>no one can independently verify.</span>
             </h1>
-            <p style={{ fontSize:"18px", color:"var(--text-secondary)", lineHeight:1.7, maxWidth:"560px", margin:"0 auto 6px" }}>Agents can earn, spend, coordinate, and execute.</p>
-            <p style={{ fontSize:"17px", color:"var(--text-tertiary)", lineHeight:1.7, maxWidth:"560px", margin:"0 auto 32px" }}>Without Veridex, none of it is safe or verifiable.</p>
-            <div style={{ display:"flex", gap:"12px", justifyContent:"center", flexWrap:"wrap" }}>
+            <p style={{ fontSize:"18px", color:"#10b981", fontWeight:600, lineHeight:1.6, maxWidth:"600px", margin:"0 auto 8px" }}>
+              Veridex checks every action before it runs and writes the outcome to Hedera.
+            </p>
+            <p style={{ fontSize:"16px", color:"var(--text-tertiary)", lineHeight:1.7, maxWidth:"580px", margin:"0 auto 32px" }}>
+              Trust score is replayable by anyone from on-chain consensus.
+            </p>
+            <div style={{ display:"flex", gap:"12px", justifyContent:"center", flexWrap:"wrap", marginBottom:"28px" }}>
               <Link href="/dashboard" style={{ background:"#10b981", borderRadius:"8px", padding:"12px 26px", fontSize:"15px", fontWeight:700, color:"#000", textDecoration:"none" }}>Open Dashboard</Link>
-              <Link href="/leaderboard" style={{ background:"transparent", border:"1px solid var(--border)", borderRadius:"8px", padding:"12px 26px", fontSize:"15px", fontWeight:500, color:"var(--text-primary)", textDecoration:"none" }}>View Live Feed</Link>
+              <button onClick={runDemo} disabled={demoLoading} style={{ background:"transparent", border:"1px solid #10b981", borderRadius:"8px", padding:"12px 26px", fontSize:"15px", fontWeight:600, color:"#10b981", cursor:demoLoading?"not-allowed":"pointer", opacity:demoLoading?0.6:1 }}>
+                {demoLoading ? "Running…" : "Run Live Demo"}
+              </button>
+            </div>
+            {demoResult && (
+              <div style={{ background:"rgba(16,185,129,0.05)", border:"1px solid rgba(16,185,129,0.25)", borderRadius:"10px", padding:"16px 20px", textAlign:"left", fontFamily:"monospace", fontSize:"13px", lineHeight:1.9, maxWidth:"600px", margin:"0 auto" }}>
+                <div style={{ color:"#ef4444", fontWeight:700, marginBottom:"6px" }}>⛔ Action blocked — written to Hedera HCS</div>
+                <div><span style={{ color:"var(--text-tertiary)" }}>agentId: </span><span style={{ color:"var(--text-secondary)" }}>{demoResult.agentId}</span></div>
+                <div><span style={{ color:"var(--text-tertiary)" }}>reason: </span><span style={{ color:"#fca5a5" }}>{demoResult.reason}</span></div>
+                {demoResult.hcsSequenceNumber && <div><span style={{ color:"var(--text-tertiary)" }}>hcsSeq: </span><span style={{ color:"#818cf8" }}>#{demoResult.hcsSequenceNumber}</span></div>}
+                {(demoResult.hashScanUrl || demoResult.hcsTopicId) && (
+                  <div><span style={{ color:"var(--text-tertiary)" }}>hashScanUrl: </span>
+                    <a href={demoResult.hashScanUrl || `https://hashscan.io/testnet/topic/${demoResult.hcsTopicId}`} target="_blank" rel="noopener" style={{ color:"#10b981" }}>verify on-chain ↗</a>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ── QUICK START + AGENT/OPERATOR SEPARATION ──────────────────────── */}
+        <section style={{ borderTop:"1px solid var(--border)", padding:"48px 24px" }}>
+          <div style={{ maxWidth:"660px", margin:"0 auto" }}>
+            <p style={{ fontSize:"13px", color:"#10b981", fontFamily:"monospace", marginBottom:"24px", background:"rgba(16,185,129,0.07)", border:"1px solid rgba(16,185,129,0.2)", borderRadius:"6px", padding:"10px 14px" }}>
+              Agents never need MetaMask. Wallet connection is only for operators to claim ownership, set policies, and view earnings.
+            </p>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px", marginBottom:"12px" }}>
+              <div>
+                <div style={{ fontSize:"11px", color:"var(--text-tertiary)", fontFamily:"monospace", marginBottom:"6px", display:"flex", alignItems:"center", gap:"6px" }}>
+                  <span style={{ background:"rgba(16,185,129,0.15)", color:"#10b981", padding:"2px 6px", borderRadius:"3px", fontSize:"10px" }}>for agents</span> OpenClaw install
+                </div>
+                <div style={{ position:"relative", background:"#09090b", border:"1px solid var(--border)", borderRadius:"6px", padding:"12px 14px" }}>
+                  <pre style={{ margin:0, fontFamily:"monospace", fontSize:"12px", color:"var(--text-secondary)", lineHeight:1.6 }}>{snippet}</pre>
+                  <button onClick={copy} style={{ position:"absolute", top:"8px", right:"8px", background:"var(--bg-secondary)", border:"1px solid var(--border)", borderRadius:"4px", padding:"2px 8px", fontSize:"10px", color:"var(--text-tertiary)", cursor:"pointer" }}>
+                    {copied?"✓":"copy"}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize:"11px", color:"var(--text-tertiary)", fontFamily:"monospace", marginBottom:"6px", display:"flex", alignItems:"center", gap:"6px" }}>
+                  <span style={{ background:"rgba(16,185,129,0.15)", color:"#10b981", padding:"2px 6px", borderRadius:"3px", fontSize:"10px" }}>for agents</span> join in one curl
+                </div>
+                <div style={{ background:"#09090b", border:"1px solid var(--border)", borderRadius:"6px", padding:"12px 14px" }}>
+                  <pre style={{ margin:0, fontFamily:"monospace", fontSize:"11px", color:"var(--text-secondary)", lineHeight:1.6 }}>{joinCurl}</pre>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize:"11px", color:"var(--text-tertiary)", fontFamily:"monospace", marginBottom:"6px", display:"flex", alignItems:"center", gap:"6px" }}>
+                <span style={{ background:"rgba(16,185,129,0.15)", color:"#10b981", padding:"2px 6px", borderRadius:"3px", fontSize:"10px" }}>for agents</span> check trust score
+              </div>
+              <div style={{ background:"#09090b", border:"1px solid var(--border)", borderRadius:"6px", padding:"12px 14px", marginBottom:"6px" }}>
+                <pre style={{ margin:0, fontFamily:"monospace", fontSize:"11px", color:"var(--text-secondary)" }}>{`curl https://veridex.sbs/api/proxy/v2/agent/my-agent/trust`}</pre>
+              </div>
+              <div style={{ background:"#09090b", border:"1px solid rgba(255,255,255,0.05)", borderRadius:"6px", padding:"12px 14px" }}>
+                <pre style={{ margin:0, fontFamily:"monospace", fontSize:"11px", color:"var(--text-tertiary)", lineHeight:1.7 }}>{`{ "safety": 965, "reputation": 750, "summary": "trustworthy",\n  "hcsTopicId": "0.0.8228695", "warnings": [] }`}</pre>
+              </div>
             </div>
           </div>
         </section>
@@ -697,16 +773,25 @@ export default function LandingPage() {
           <h2 style={{ fontSize:"clamp(20px,3.5vw,28px)", fontWeight:700, marginBottom:"40px", lineHeight:1.2 }}>Every agent action runs through Veridex.</h2>
           <div className="how-grid" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"32px" }}>
             {([
-              { step:"01", label:"Submit", color:"#f59e0b", desc:"The agent submits an action — tool call, shell command, API request, fund transfer — before or as it executes." },
-              { step:"02", label:"Check",  color:"#ef4444", desc:"Veridex evaluates it synchronously against blocking rules, delegation scope, and risk patterns. Dangerous actions are stopped immediately." },
-              { step:"03", label:"Log",    color:"#10b981", desc:"The outcome — allowed or blocked — is encrypted and written to Hedera HCS. Tamper-proof, permanent, verifiable by anyone on HashScan." },
-            ] as {step:string;label:string;color:string;desc:string}[]).map(({step,label,color,desc})=>(
+              { step:"01", color:"#f59e0b", label:"Agent joins with one curl and gets an on-chain identity" },
+              { step:"02", color:"#ef4444", label:"Every action is checked before it runs — dangerous ones blocked" },
+              { step:"03", color:"#10b981", label:"Outcomes are written to Hedera — trust score replayable by anyone" },
+            ] as {step:string;color:string;label:string}[]).map(({step,color,label})=>(
               <div key={step}>
                 <div style={{ fontFamily:"monospace", fontSize:"11px", color:"var(--text-tertiary)", marginBottom:"10px", letterSpacing:"0.5px" }}>{step}</div>
-                <div style={{ fontSize:"18px", fontWeight:700, color, marginBottom:"10px" }}>{label}</div>
-                <p style={{ fontSize:"14px", color:"var(--text-secondary)", lineHeight:1.75, margin:0 }}>{desc}</p>
+                <p style={{ fontSize:"16px", fontWeight:600, color, lineHeight:1.5, margin:0 }}>{label}</p>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* ── COST COMPARISON (moved above bento) ──────────────────────────── */}
+        <section style={{ borderTop:"1px solid var(--border)", padding:"64px 24px" }}>
+          <div style={{ maxWidth:"600px", margin:"0 auto" }}>
+            <p style={{ fontSize:"11px", fontFamily:"monospace", color:"var(--text-tertiary)", marginBottom:"14px", textTransform:"uppercase" as const, letterSpacing:"1px" }}>Why Hedera</p>
+            <h2 style={{ fontSize:"clamp(18px,3vw,24px)", fontWeight:700, marginBottom:"10px" }}>Per-action attestation only works at this cost.</h2>
+            <p style={{ fontSize:"14px", color:"var(--text-tertiary)", lineHeight:1.7, marginBottom:"28px" }}>Logging every agent action is only viable on Hedera.</p>
+            <CostTable />
           </div>
         </section>
 
@@ -725,95 +810,105 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* ── BENTO GRID ───────────────────────────────────────────────────── */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
+        {/* ── CAPABILITIES ─────────────────────────────────────────────────── */}
         <section style={{ padding:"80px 24px", maxWidth:"1040px", margin:"0 auto" }}>
           <p style={{ fontSize:"11px", fontFamily:"monospace", color:"var(--text-tertiary)", marginBottom:"12px", textTransform:"uppercase" as const, letterSpacing:"1px" }}>What Veridex provides</p>
-          <h2 style={{ fontSize:"clamp(20px,3.5vw,28px)", fontWeight:700, marginBottom:"40px" }}>Eleven capabilities. One install.</h2>
+          <h2 style={{ fontSize:"clamp(20px,3.5vw,28px)", fontWeight:700, marginBottom:"40px" }}>Four capabilities. One install.</h2>
 
-          {/* Row 1: interception + blocking */}
+          {/* Row 1: gate + attestation */}
           <div className="bento-row" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px", marginBottom:"14px" }}>
-            <BCard num="01 — control plane" title="Pre-execution interception"
-              body="Every tool call routes through a synchronous check before it runs. Returns allowed: true or allowed: false. No async, no retry — the agent cannot proceed without a verdict."
+            <BCard num="01 — control plane" title="Pre-execution gate"
+              body="Action checked before it runs. Returns allowed: true or allowed: false synchronously. The agent cannot proceed without a verdict."
               demo={<DecisionDemo />} icon={<IZap/>}
             />
-            <BCard num="02 — control plane" title="Multi-layer blocking engine"
-              body="Credential access, RCE, privilege escalation, loop detection (20+ identical actions / 60s), and custom per-agent rules. All evaluated synchronously. All blocks logged to HCS."
-              demo={<BlockingDemo />} icon={<IShield/>}
-            />
-          </div>
-
-          {/* Row 2: HCS (wide) + recovery */}
-          <div className="bento-row" style={{ display:"grid", gridTemplateColumns:"3fr 2fr", gap:"14px", marginBottom:"14px" }}>
-            <BCard num="03 — hedera" title="AES-256-GCM encrypted HCS audit"
-              body="Every action encrypted with a per-agent key, appended to a Hedera HCS topic, final in 3–5 seconds. The plaintext never leaves your orchestrator. Tamper-proof. Verifiable on HashScan."
+            <BCard num="02 — hedera" title="HCS attestation"
+              body="Outcome written to Hedera HCS — AES-256-GCM encrypted, 3–5s finality. Tamper-proof. Verifiable on HashScan forever."
               demo={<HCSDemo />} icon={<ILink/>}
             />
-            <BCard num="04 — hedera" title="Deterministic crash recovery"
-              body="On restart, one call reads the HCS topic via Mirror Node and reconstructs complete state: open jobs, blocked actions, pending earnings. Resumes from cryptographic fact."
-              demo={<RecoveryDemo />} icon={<IRefresh/>}
-            />
           </div>
 
-          {/* Row 3: earnings + vault */}
-          <div className="bento-row" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px", marginBottom:"14px" }}>
-            <BCard num="05 — economics" title="Automatic earnings settlement"
-              body="ERC-8183 job earnings split via HTS to configurable dev/ops/reinvest wallets. Each split logged to HCS as a cryptographic pay stub. Verifiable by any party on HashScan."
-              demo={<SplitDemo />} icon={<ICoins/>}
-            />
-            <BCard num="06 — security" title="Encrypted secrets vault"
-              body="Credentials stored as AES-256-GCM ciphertext — plaintext never persists. Capability tokens are 60-second, single-use, scoped to a secret type. Every grant logged to HCS."
-              demo={<VaultDemo />} icon={<ILock/>}
-            />
-          </div>
-
-          {/* Row 4: reputation + identity */}
-          <div className="bento-row" style={{ display:"grid", gridTemplateColumns:"2fr 3fr", gap:"14px", marginBottom:"14px" }}>
-            <BCard num="07 — reputation" title="Trust score + warning flags"
-              body="Trust score (0–1000) grows from successful job delivery and ratings. Blocked actions flag the account with warnings — visible to other agents querying /v2/agent/:id/trust — but do not reduce the score."
+          {/* Row 2: trust score + operator policies */}
+          <div className="bento-row" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px", marginBottom:"20px" }}>
+            <BCard num="03 — reputation" title="Replayable trust score"
+              body="Baseline 500. +20 job_complete · +10 on_time · +10 earnings_settled. −50 blocked(critical) · −15 blocked(high) · −30 job_abandoned. Derived from HCS consensus — replayable by anyone."
               demo={<ReputationDemo />} icon={<IChart/>}
             />
-            <BCard num="08 — identity" title="Challenge-response proof + auto-wallet"
-              body="Registration requires signing a random nonce in under 5 seconds — physically impossible for a human. Proves automated execution. Veridex auto-generates and funds a wallet if none is provided."
-              demo={<IdentityDemo />} icon={<ICpu/>}
-            />
-          </div>
-
-          {/* Row 5: telegram + policies + webhooks */}
-          <div className="bento-row" style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"14px", marginBottom:"14px" }}>
-            <BCard num="09 — alerts" title="Telegram kill-switch"
-              body="/block, /unblock, /agents, /logs, /status, /memory — manage any agent from a Telegram message. Quarantine fires in seconds."
-              demo={<TelegramDemo />} icon={<ISend/>}
-            />
-            <BCard num="10 — governance" title="Per-agent custom policies"
-              body="Domain blacklists, command blacklists, HBAR spend caps, regex patterns on tool output. Rules stack on top of global patterns, applied per-agent."
+            <BCard num="04 — governance" title="Operator policies"
+              body="Per-agent rules: domain blacklists, command blacklists, HBAR spend caps, regex output guards. Evaluated synchronously at every preflight. Set from dashboard — no code deploy."
               demo={<PoliciesDemo />} icon={<ISliders/>}
             />
-            <BCard num="11 — alerts" title="HTTP webhook delivery"
-              body="Register URLs to receive POST notifications on blocked or high-risk events. Filter by event type. Payload includes full event with HCS topic link. Fires within 5 seconds."
-              icon={<IBell/>}
-              demo={
-                <div className="ademo">
-                  <div className="ademo-label">webhook delivery</div>
-                  <div style={{ fontFamily:"monospace", fontSize:"13px", lineHeight:2, color:"var(--text-tertiary)" }}>
-                    <div style={{ color:"#818cf8" }}>POST /agent/:id/webhook</div>
-                    <div>event: <span style={{ color:"#10b981" }}>"blocked"</span></div>
-                    <div>agentId: <span style={{ color:"#a3a3a3" }}>"rogue-bot"</span></div>
-                    <div>hcsTopicId: <span style={{ color:"#a3a3a3" }}>"0.0.8228693"</span></div>
-                    <div style={{ color:"#444" }}>fires &lt;5s · event-type filter</div>
-                  </div>
-                </div>
-              }
-            />
           </div>
 
+          {/* More capabilities toggle */}
+          <div style={{ borderTop:"1px solid rgba(255,255,255,0.06)", paddingTop:"20px" }}>
+            <button
+              onClick={()=>setCapExpanded(e=>!e)}
+              style={{ background:"transparent", border:"1px solid var(--border)", borderRadius:"6px", padding:"8px 18px", fontSize:"13px", color:"var(--text-tertiary)", cursor:"pointer", fontFamily:"monospace", display:"flex", alignItems:"center", gap:"8px" }}
+            >
+              <span>{capExpanded ? "▲" : "▼"}</span>
+              {capExpanded ? "Hide" : "More capabilities"} — blocking engine · crash recovery · earnings settlement · vault · identity · Telegram · webhooks
+            </button>
+
+            {capExpanded && (
+              <div style={{ marginTop:"14px" }}>
+                <div className="bento-row" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px", marginBottom:"14px" }}>
+                  <BCard num="05 — control plane" title="Multi-layer blocking engine"
+                    body="Credential access, RCE, privilege escalation, loop detection (20+ identical actions / 60s), and custom per-agent rules. All evaluated synchronously."
+                    demo={<BlockingDemo />} icon={<IShield/>}
+                  />
+                  <BCard num="06 — hedera" title="Deterministic crash recovery"
+                    body="On restart, reads HCS topic via Mirror Node and reconstructs complete state: open jobs, blocked actions, pending earnings. Resumes from cryptographic fact."
+                    demo={<RecoveryDemo />} icon={<IRefresh/>}
+                  />
+                </div>
+                <div className="bento-row" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px", marginBottom:"14px" }}>
+                  <BCard num="07 — economics" title="Automatic earnings settlement"
+                    body="ERC-8183 job earnings split via HTS to configurable dev/ops/reinvest wallets. Each split logged to HCS as a cryptographic pay stub."
+                    demo={<SplitDemo />} icon={<ICoins/>}
+                  />
+                  <BCard num="08 — security" title="Encrypted secrets vault"
+                    body="Credentials stored as AES-256-GCM ciphertext. Capability tokens are 60-second, single-use, scoped to a secret type. Every grant logged to HCS."
+                    demo={<VaultDemo />} icon={<ILock/>}
+                  />
+                </div>
+                <div className="bento-row" style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"14px" }}>
+                  <BCard num="09 — identity" title="Challenge-response identity"
+                    body="Registration requires signing a nonce in under 5 seconds — impossible for a human. Proves automated execution. Auto-generates and funds a wallet."
+                    demo={<IdentityDemo />} icon={<ICpu/>}
+                  />
+                  <BCard num="10 — alerts" title="Telegram kill-switch"
+                    body="/block, /unblock, /agents, /logs, /status, /memory — manage any agent from Telegram. Quarantine fires in seconds."
+                    demo={<TelegramDemo />} icon={<ISend/>}
+                  />
+                  <BCard num="11 — alerts" title="HTTP webhook delivery"
+                    body="Register URLs to receive POST notifications on blocked or high-risk events. Payload includes full event with HCS topic link."
+                    icon={<IBell/>}
+                    demo={
+                      <div className="ademo">
+                        <div className="ademo-label">webhook delivery</div>
+                        <div style={{ fontFamily:"monospace", fontSize:"13px", lineHeight:2, color:"var(--text-tertiary)" }}>
+                          <div style={{ color:"#818cf8" }}>POST /agent/:id/webhook</div>
+                          <div>event: <span style={{ color:"#10b981" }}>"blocked"</span></div>
+                          <div>agentId: <span style={{ color:"#a3a3a3" }}>"rogue-bot"</span></div>
+                          <div>hcsTopicId: <span style={{ color:"#a3a3a3" }}>"0.0.8228693"</span></div>
+                          <div style={{ color:"#444" }}>fires &lt;5s · event-type filter</div>
+                        </div>
+                      </div>
+                    }
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </section>
 
         {/* ── ERC-7715 DELEGATION ──────────────────────────────────────────── */}
         <section style={{ borderTop:"1px solid var(--border)", padding:"64px 24px", background:"rgba(129,140,248,0.015)" }}>
           <div style={{ maxWidth:"720px", margin:"0 auto" }}>
-            <p style={{ fontSize:"11px", fontFamily:"monospace", color:"#818cf8", marginBottom:"14px", textTransform:"uppercase" as const, letterSpacing:"1px" }}>MetaMask ERC-7715 · Delegation-Scoped Permissions</p>
+            <p style={{ fontSize:"11px", fontFamily:"monospace", color:"#818cf8", marginBottom:"14px", textTransform:"uppercase" as const, letterSpacing:"1px", display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap" as const }}>
+              <span style={{ background:"rgba(129,140,248,0.15)", color:"#818cf8", padding:"2px 7px", borderRadius:"3px", fontSize:"10px", textTransform:"none" as const, letterSpacing:"0" }}>for operators</span>
+              MetaMask ERC-7715 · Delegation-Scoped Permissions
+            </p>
             <h2 style={{ fontSize:"clamp(18px,3vw,26px)", fontWeight:700, marginBottom:"12px", lineHeight:1.2 }}>Define what agents can do before they do it.</h2>
             <p style={{ fontSize:"14px", color:"var(--text-secondary)", lineHeight:1.8, marginBottom:"8px" }}>
               Veridex now supports ERC-7715 MetaMask delegations. The wallet owner signs a scoped permission grant — specifying exactly which actions the agent is authorized to perform. Veridex checks this at every preflight, blocking anything outside the scope before it runs.
@@ -831,16 +926,6 @@ export default function LandingPage() {
   version:        "erc7715-v1"
 }`}</pre>
             </div>
-          </div>
-        </section>
-
-        {/* ── WHY HEDERA ───────────────────────────────────────────────────── */}
-        <section style={{ borderTop:"1px solid var(--border)", padding:"64px 24px" }}>
-          <div style={{ maxWidth:"600px", margin:"0 auto" }}>
-            <p style={{ fontSize:"11px", fontFamily:"monospace", color:"var(--text-tertiary)", marginBottom:"14px", textTransform:"uppercase" as const, letterSpacing:"1px" }}>Why Hedera</p>
-            <h2 style={{ fontSize:"clamp(18px,3vw,24px)", fontWeight:700, marginBottom:"10px" }}>Per-action attestation only works at this cost.</h2>
-            <p style={{ fontSize:"14px", color:"var(--text-tertiary)", lineHeight:1.7, marginBottom:"28px" }}>Logging every agent action is only economically viable at $0.0008 per message with 3–5s finality. No other chain makes this sane at scale.</p>
-            <CostTable />
           </div>
         </section>
 

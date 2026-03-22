@@ -5,6 +5,13 @@ import { Nav } from "../components/Nav";
 import { useEffect, useState, useCallback } from "react";
 import { ethers } from "ethers";
 
+// Seeded fallback — renders immediately so cold visitors never see "Loading..."
+const SEEDED_AGENTS: AgentRow[] = [
+  { id: "research-bot-demo", name: "ResearchBot", owner_wallet: "0x53776769f4b9554c51D0852a1Cb11C1eaB4b92AD", hcs_topic_id: "0.0.8228693", hashScanUrl: "https://hashscan.io/testnet/topic/0.0.8228693", totalActions: 1247, blockedActions: 0,  totalEarned: 0,    activeAlerts: 0, created_at: 0, safetyScore: 1000, reputationScore: 820, verifiedMachineAgent: true,  jobsCompleted: 12 },
+  { id: "trading-bot-demo",  name: "TradingBot",  owner_wallet: "0xDA50F7472eC8984F4fAf16BcF6F1f6e0468b896E", hcs_topic_id: "0.0.8228695", hashScanUrl: "https://hashscan.io/testnet/topic/0.0.8228695", totalActions:  892, blockedActions: 3,  totalEarned: 48.3, activeAlerts: 0, created_at: 0, safetyScore:  965, reputationScore: 750, verifiedMachineAgent: true,  jobsCompleted:  8 },
+  { id: "rogue-bot-demo",    name: "RogueBot",    owner_wallet: "0xD21e831eF771277E7d5c05e17583210b9A25134e", hcs_topic_id: "0.0.8228696", hashScanUrl: "https://hashscan.io/testnet/topic/0.0.8228696", totalActions:  347, blockedActions: 17, totalEarned: 0,    activeAlerts: 2, created_at: 0, safetyScore:  245, reputationScore: 200, verifiedMachineAgent: false, jobsCompleted:  0 },
+];
+
 const IDENTITY_ABI = [
   "function getAgent(address) external view returns (tuple(string name, string description, string capabilities, uint256 registeredAt, bool active, bool verifiedMachineAgent, uint256 jobsCompleted, uint256 jobsFailed, uint256 totalEarned, uint256 reputationScore, uint256 totalRatings, uint256 clientScore, uint256 clientRatings, uint256 reportCount))"
 ];
@@ -38,8 +45,8 @@ function timeAgo(ts: number) {
 }
 
 export default function LeaderboardPage() {
-  const [agents, setAgents] = useState<AgentRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [agents, setAgents] = useState<AgentRow[]>(SEEDED_AGENTS);
+  const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number>(0);
 
   const fetchLeaderboard = useCallback(async () => {

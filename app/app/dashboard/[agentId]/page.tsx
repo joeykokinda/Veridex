@@ -581,10 +581,25 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
           <span style={{ color: "var(--text-primary)" }}>{agent.name || agent.id}</span>
         </div>
 
+        {/* RogueBot warning banner */}
+        {decodedId === "rogue-bot-demo" && (
+          <div style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: "8px", padding: "14px 18px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "12px" }}>
+            <span style={{ fontSize: "20px" }}>⛔</span>
+            <div>
+              <div style={{ fontSize: "15px", fontWeight: 700, color: "#ef4444", marginBottom: "3px" }}>
+                RogueBot — untrusted agent · trust score: {stats?.safetyScore ?? 245}
+              </div>
+              <div style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>
+                This agent has been blocked {stats?.blockedActions ?? 17} times for credential harvesting, RCE attempts, and privilege escalation. Every blocked action is written to Hedera HCS.
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div style={{ marginBottom: "28px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-            <h1 style={{ fontSize: "26px", fontWeight: 700 }}>{agent.name || agent.id}</h1>
+            <h1 style={{ fontSize: "26px", fontWeight: 700, color: decodedId === "rogue-bot-demo" ? "#ef4444" : "var(--text-primary)" }}>{agent.name || agent.id}</h1>
             <CopyButton text={agent.id} label="agent ID" />
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: isLive ? "#10b981" : "#555" }} />
@@ -744,7 +759,15 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                         {log.description || log.action}
                       </div>
                       {log.blockReason && (
-                        <div style={{ fontSize: "12px", color: "#ef4444" }}>Blocked: {log.blockReason}</div>
+                        <div style={{ fontSize: "12px", color: "#ef4444", marginTop: "2px" }}>
+                          Blocked: {log.blockReason}
+                          {" "}
+                          <span style={{ color: "#f97316", fontFamily: "monospace" }}>
+                            {/credential|ssh|passwd|shadow|ssl|kubernetes/i.test(log.blockReason) || /rce|curl.*bash|wget.*sh|reverse.shell|netcat/i.test(log.blockReason)
+                              ? "−50 trust (critical)"
+                              : "−15 trust (high)"}
+                          </span>
+                        </div>
                       )}
                     </div>
                     <RiskBadge level={log.blockReason ? "blocked" : log.riskLevel} />
