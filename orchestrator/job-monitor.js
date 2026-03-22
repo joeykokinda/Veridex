@@ -113,6 +113,20 @@ async function _handleEvent(parsed, rawLog) {
   if (name === "BidAccepted") {
     update.agent      = args.worker;
     update.acceptedAt = Date.now();
+
+    // Write job_start to agent's HCS topic — this is one half of the reputation pair
+    if (args.worker) {
+      const agentRec = db.findAgentByWallet(args.worker);
+      if (agentRec?.hcs_topic_id) {
+        writeToHCS(agentRec.hcs_topic_id, {
+          type:      "job_start",
+          jobId,
+          task:      `job_${jobId}`,
+          deadline:  Date.now() + 24 * 60 * 60 * 1000, // 24h default
+          timestamp: Date.now(),
+        }, agentRec.hcs_encryption_key || null).catch(() => {});
+      }
+    }
   }
   if (name === "DeliverySubmitted") {
     update.agent = args.worker;
@@ -195,11 +209,13 @@ async function _handleCompletion(jobId, agentAddress, paymentWei) {
 
   if (agentRecord.hcs_topic_id) {
     writeToHCS(agentRecord.hcs_topic_id, {
-      event:   "job_completed",
-      jobId, amountHbar,
-      split:   { dev: devAmt, ops: opsAmt, reinvest: reinAmt },
+      event:     "job_completed",
+      type:      "job_complete",   // trust-score key
+      jobId,     amountHbar,
+      result:    "success",
+      split:     { dev: devAmt, ops: opsAmt, reinvest: reinAmt },
       timestamp: Date.now(),
-    }).catch(() => {});
+    }, agentRecord.hcs_encryption_key || null).catch(() => {});
   }
 
   console.log(`[JobMonitor] Job #${jobId} completed → ${amountHbar} HBAR to ${agentRecord.id}`);

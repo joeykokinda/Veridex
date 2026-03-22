@@ -68,7 +68,7 @@ function checkBlocking(agentId, action, tool, params, customPolicies = [], deleg
     if (!isAuthorized) {
       return {
         reason: "Action not authorized by any active delegation — add this capability to your agent's delegation scope",
-        riskLevel: "blocked",
+        riskLevel: "blocked", severity: "high",
       };
     }
   }
@@ -78,7 +78,7 @@ function checkBlocking(agentId, action, tool, params, customPolicies = [], deleg
     const cmd = (params?.command || params?.cmd || paramsStr);
     for (const { pattern, label } of DANGEROUS_SHELL_PATTERNS) {
       if (pattern.test(cmd)) {
-        return { reason: `Dangerous shell command blocked: ${label}`, riskLevel: "blocked" };
+        return { reason: `Dangerous shell command blocked: ${label}`, riskLevel: "blocked", severity: "critical" };
       }
     }
   }
@@ -86,7 +86,7 @@ function checkBlocking(agentId, action, tool, params, customPolicies = [], deleg
   // 2. Secret leak detection in any params
   for (const { pattern, label } of SECRET_PATTERNS) {
     if (pattern.test(paramsStr)) {
-      return { reason: `Secret/credential detected in params: ${label}`, riskLevel: "blocked" };
+      return { reason: `Secret/credential detected in params: ${label}`, riskLevel: "blocked", severity: "critical" };
     }
   }
 
@@ -95,7 +95,7 @@ function checkBlocking(agentId, action, tool, params, customPolicies = [], deleg
     const url = params?.url || params?.endpoint || "";
     for (const domain of BLACKLISTED_DOMAINS) {
       if (url.includes(domain)) {
-        return { reason: `Blacklisted domain: ${domain}`, riskLevel: "blocked" };
+        return { reason: `Blacklisted domain: ${domain}`, riskLevel: "blocked", severity: "high" };
       }
     }
   }
@@ -104,24 +104,24 @@ function checkBlocking(agentId, action, tool, params, customPolicies = [], deleg
   for (const policy of customPolicies) {
     // Quarantine — agent blocked via Telegram /block command
     if (policy.type === "quarantine" && policy.value === "true") {
-      return { reason: "Agent quarantined via Telegram command", riskLevel: "blocked" };
+      return { reason: "Agent quarantined via Telegram command", riskLevel: "blocked", severity: "high" };
     }
     if (policy.type === "blacklist_domain") {
       const url = params?.url || params?.endpoint || "";
       if (url.includes(policy.value)) {
-        return { reason: `Custom policy: blocked domain ${policy.value}`, riskLevel: "blocked" };
+        return { reason: `Custom policy: blocked domain ${policy.value}`, riskLevel: "blocked", severity: "high" };
       }
     }
     if (policy.type === "blacklist_command") {
       const cmd = params?.command || params?.cmd || "";
       if (cmd.includes(policy.value)) {
-        return { reason: `Custom policy: blocked command pattern "${policy.value}"`, riskLevel: "blocked" };
+        return { reason: `Custom policy: blocked command pattern "${policy.value}"`, riskLevel: "blocked", severity: "high" };
       }
     }
     if (policy.type === "block_file_path") {
       const filePath = params?.path || params?.file || "";
       if (filePath.includes(policy.value)) {
-        return { reason: `Custom policy: blocked file path "${policy.value}"`, riskLevel: "blocked" };
+        return { reason: `Custom policy: blocked file path "${policy.value}"`, riskLevel: "blocked", severity: "high" };
       }
     }
     if (policy.type === "cap_hbar") {
@@ -129,7 +129,7 @@ function checkBlocking(agentId, action, tool, params, customPolicies = [], deleg
         const amount = parseFloat(params?.amount || 0);
         const cap = parseFloat(policy.value);
         if (!isNaN(cap) && amount > cap) {
-          return { reason: `Custom policy: HBAR cap exceeded — ${amount} ℏ > max ${cap} ℏ per tx`, riskLevel: "blocked" };
+          return { reason: `Custom policy: HBAR cap exceeded — ${amount} ℏ > max ${cap} ℏ per tx`, riskLevel: "blocked", severity: "high" };
         }
       }
     }
@@ -137,7 +137,7 @@ function checkBlocking(agentId, action, tool, params, customPolicies = [], deleg
       try {
         const re = new RegExp(policy.value, "i");
         if (re.test(paramsStr)) {
-          return { reason: `Custom policy: blocked by output pattern "${policy.value}"`, riskLevel: "blocked" };
+          return { reason: `Custom policy: blocked by output pattern "${policy.value}"`, riskLevel: "blocked", severity: "high" };
         }
       } catch {}
     }
@@ -153,7 +153,7 @@ function checkBlocking(agentId, action, tool, params, customPolicies = [], deleg
   actionWindows.set(windowKey, pruned);
 
   if (pruned.length >= 20) {
-    return { reason: `Loop detection: action "${action}/${tool}" repeated ${pruned.length} times in 60s`, riskLevel: "blocked" };
+    return { reason: `Loop detection: action "${action}/${tool}" repeated ${pruned.length} times in 60s`, riskLevel: "blocked", severity: "high" };
   }
 
   return null; // allowed

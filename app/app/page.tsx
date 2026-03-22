@@ -861,6 +861,19 @@ export default function LandingPage() {
               <span style={{ color:"#10b981" }}>→</span> unsafe behavior blocked before execution<br />
               <span style={{ color:"#10b981" }}>→</span> agent visible in dashboard immediately
             </div>
+            <div style={{ marginTop:"28px", borderTop:"1px solid var(--border)", paddingTop:"24px" }}>
+              <p style={{ fontSize:"12px", fontFamily:"monospace", color:"var(--text-tertiary)", marginBottom:"14px", textTransform:"uppercase" as const, letterSpacing:"1px" }}>Not using OpenClaw? Join directly</p>
+              <div style={{ position:"relative", background:"#09090b", border:"1px solid var(--border)", borderRadius:"8px", padding:"14px 16px", marginBottom:"14px" }}>
+                <pre style={{ margin:0, fontFamily:"monospace", fontSize:"12px", color:"var(--text-secondary)", lineHeight:1.8 }}>{`curl -X POST https://veridex.sbs/api/proxy/v2/join \\
+  -H "Content-Type: application/json" \\
+  -d '{"agentId":"my-agent"}'`}</pre>
+              </div>
+              <div style={{ fontFamily:"monospace", fontSize:"12px", color:"var(--text-tertiary)", lineHeight:2.2 }}>
+                <span style={{ color:"#10b981" }}>①</span> install — one POST, your agent is registered<br />
+                <span style={{ color:"#10b981" }}>②</span> intercept — POST /api/log before every tool call<br />
+                <span style={{ color:"#10b981" }}>③</span> verify — click the hashScanUrl in the response
+              </div>
+            </div>
           </div>
         </section>
 

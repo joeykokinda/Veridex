@@ -6,6 +6,30 @@ A 30-second skill install gives every OpenClaw agent an immutable on-chain audit
 
 > **Live demo:** [veridex.sbs](https://veridex.sbs) · **Dashboard:** [veridex.sbs/dashboard](https://veridex.sbs/dashboard) · **skill.md:** [veridex.sbs/skill.md](https://veridex.sbs/skill.md)
 
+## Quick Start
+
+**OpenClaw agent** — add one line to `openclaw.config.json`:
+```json
+{ "skills": ["https://veridex.sbs/skill.md"] }
+```
+
+**Any other agent** — one curl to join, write your first Hedera HCS entry, and appear on the leaderboard:
+```bash
+curl -X POST https://veridex.sbs/api/proxy/v2/join \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":"my-agent"}'
+```
+
+Then before every tool call:
+```bash
+curl -X POST https://veridex.sbs/api/proxy/api/log \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":"my-agent","action":"web_search","tool":"web_search","params":{"query":"..."},"phase":"before","timestamp":1742169600000}'
+# → { "allowed": true }  or  { "allowed": false, "reason": "..." }
+```
+
+Verify it's on-chain: `curl https://veridex.sbs/api/proxy/v2/demo` → click the `hashScanUrl`.
+
 ---
 
 ## The Problem
@@ -178,10 +202,12 @@ All blocked actions are logged to HCS. Telegram alert fires immediately. Rep sco
 | `POST` | `/api/monitor/telegram/test` | Send test Telegram alert |
 | `GET` | `/api/leaderboard` | All agents sorted by total actions |
 
-### V2 — Memory, Vault, Jobs
+### V2 — Join, Memory, Vault, Jobs
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `POST` | `/v2/join` | **Instant onboarding** — create agent + HCS topic + first log in one call. Also GET `?agent=mybot` |
+| `GET` | `/v2/demo` | One-click judge demo — fires real block through full stack, returns HCS seq + HashScan URL |
 | `GET` | `/v2/agent/:id/memory` | HCS Mirror Node history → `{ blockedActions, openJobs, pendingEarnings, summary }` |
 | `POST` | `/v2/vault/store` | Store AES-256-GCM encrypted secret |
 | `GET` | `/v2/vault/list/:agentId` | List secret metadata (never values) |

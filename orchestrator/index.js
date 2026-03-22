@@ -16,6 +16,7 @@ const db = require("./veridex-db");
 const { checkBlocking, assessRisk, decodeAction } = require("./blocking");
 const { getAgentSplitConfig, setAgentSplitConfig, decrementReputation, updateReputationFromJob, updateSafetyScore } = db;
 const { createAgentTopic, writeToHCS, decryptHcsMessage, topicHashScanUrl } = require("./hcs-logger");
+const { computeTrustScore, fetchHcsMessages, scoreLabel } = require("./trust-score");
 const { randomBytes } = require("crypto");
 const { sendAlert } = require("./telegram");
 const telegramBot = require("./telegram-bot");
@@ -24,6 +25,9 @@ const { startJobMonitor, getRecentJobs, getAgentJobs } = require("./job-monitor"
 
 // SSE clients for live feed
 const liveClients = new Set();
+
+// Trust score cache — keyed by agentId, 60s TTL
+const trustCache = new Map(); // agentId → { result, cachedAt }
 
 // Load ABIs
 const AgentIdentity = require("../artifacts/contracts/AgentIdentity.sol/AgentIdentity.json");
@@ -348,6 +352,7 @@ app.post("/api/log", async (req, res) => {
       writeToHCS(agentRecord.hcs_topic_id, {
         logId, agentId, action, tool, params: params ? sanitizeParams(params) : null,
         result: "blocked", riskLevel: "blocked",
+        severity: blockResult.severity || "high",
         blockReason: blockResult.reason, phase,
         timestamp: timestamp || Date.now()
       }, agentRecord.hcs_encryption_key || null).then(hcsResult => {
@@ -394,8 +399,9 @@ app.post("/api/log", async (req, res) => {
       }
     });
 
-    // Penalize safety score (-5 per blocked action). Reputation is job-outcomes only.
+    // Penalize safety score and reputation score on every block.
     updateSafetyScore(agentId, -5);
+    updateReputationFromJob(agentId, -5);
 
     // Attempt on-chain reportAgent via registryAuthority (fire-and-forget)
     if (registryAuthority && agentRecord.owner_wallet) {
@@ -1219,59 +1225,81 @@ app.post("/v2/agent/:agentId/job-outcome", (req, res) => {
 
 /**
  * GET /v2/agent/:agentId/trust
- * Returns both reputation (job delivery) and safety (block history) scores with
- * plain-English summaries for agent-to-agent or client trust checks.
+ * Computes trust score purely from the agent's HCS topic messages on Hedera.
+ * Never reads rep_score or safety_score from DB — those are kept only as fallback cache.
+ * Cache: 60s TTL per agent.
  */
-app.get("/v2/agent/:agentId/trust", (req, res) => {
+app.get("/v2/agent/:agentId/trust", async (req, res) => {
   const { agentId } = req.params;
   const agent = db.getAgent(agentId);
   if (!agent) return res.status(404).json({ error: "Agent not found" });
 
-  const stats = db.getAgentStats(agentId);
-  const rep   = stats.reputationScore;
-  const safe  = stats.safetyScore;
+  if (!agent.hcs_topic_id) {
+    return res.status(200).json({
+      agentId, name: agent.name,
+      score: 500, label: "Unverifiable",
+      breakdown: {},
+      source: "no-hcs-topic",
+      message: "Agent has no HCS topic — register to enable verifiable trust scoring",
+    });
+  }
 
-  const repLabel = rep >= 800 ? "Excellent" : rep >= 600 ? "Good" : rep >= 400 ? "Fair" : rep >= 200 ? "Poor" : "Critical";
-  const safeLabel = safe >= 900 ? "Clean" : safe >= 700 ? "Low risk" : safe >= 500 ? "Moderate risk" : safe >= 300 ? "High risk" : "Untrusted";
+  // Check 60s cache
+  const cached = trustCache.get(agentId);
+  if (cached && Date.now() - cached.cachedAt < 60_000) {
+    return res.json({ ...cached.result, cached: true });
+  }
 
-  const repSummary = rep >= 800
-    ? "Strong job delivery record — consistently completes work on time."
-    : rep >= 600
-    ? "Solid job delivery — mostly on-time with few issues."
-    : rep >= 400
-    ? "Mixed job history — some late or disputed deliveries."
-    : rep >= 200
-    ? "Poor delivery record — frequent abandonment or disputes."
-    : "Critically low reputation — history of failed or disputed jobs.";
+  // Fetch all HCS messages for this agent's topic
+  let messages;
+  try {
+    messages = await fetchHcsMessages(agent.hcs_topic_id, agent.hcs_encryption_key || null, decryptHcsMessage);
+  } catch (e) {
+    console.warn(`[trust] Mirror Node fetch failed for ${agentId}:`, e.message);
+    return res.status(503).json({ error: "Mirror Node unavailable", agentId });
+  }
 
-  const safeSummary = safe >= 900
-    ? "No blocked actions detected — fully within policy."
-    : safe >= 700
-    ? "Few blocked actions — operating within acceptable bounds."
-    : safe >= 500
-    ? "Moderate block history — review agent policies."
-    : safe >= 300
-    ? "Frequent policy violations — high-risk agent."
-    : "Severely restricted — repeated policy violations.";
+  // Compute trust score from messages
+  const { score, breakdown, openJobs } = computeTrustScore(messages);
 
-  res.json({
+  // Write job_abandoned to HCS for any timed-out open jobs (idempotent — only for new ones)
+  if (openJobs.length > 0 && agent.hcs_topic_id) {
+    const alreadyFlagged = new Set(
+      messages.filter(m => m.type === "job_abandoned").map(m => String(m.jobId))
+    );
+    for (const job of openJobs) {
+      if (!alreadyFlagged.has(String(job.jobId))) {
+        writeToHCS(agent.hcs_topic_id, {
+          type:      "job_abandoned",
+          jobId:     job.jobId,
+          timestamp: Date.now(),
+        }, agent.hcs_encryption_key || null).catch(() => {});
+        console.log(`[trust] job_abandoned written to HCS for ${agentId} job ${job.jobId}`);
+      }
+    }
+  }
+
+  const latestSeqNum = messages.length > 0
+    ? messages[messages.length - 1].sequenceNumber
+    : 0;
+
+  const result = {
     agentId,
-    name: agent.name,
-    reputation: {
-      score: rep,
-      label: repLabel,
-      summary: repSummary,
-      basis: "ERC-8183 job outcomes: completions, abandonments, disputes, ratings",
-    },
-    safety: {
-      score: safe,
-      label: safeLabel,
-      summary: safeSummary,
-      basis: "Veridex pre-execution policy checks: blocked actions",
-      blockedActions: stats.blockedActions,
-    },
-    overallTrust: Math.round((rep * 0.6) + (safe * 0.4)),
-  });
+    name:         agent.name,
+    score,
+    label:        scoreLabel(score),
+    breakdown,
+    openJobs:     openJobs.map(j => j.jobId),
+    source:       "hedera-hcs",
+    hcsTopicId:   agent.hcs_topic_id,
+    hashScanUrl:  topicHashScanUrl(agent.hcs_topic_id),
+    messageCount: messages.length,
+    latestSeqNum,
+    cachedAt:     Date.now(),
+  };
+
+  trustCache.set(agentId, { result, cachedAt: Date.now() });
+  res.json(result);
 });
 
 // ── Layer 8: Verifiable Operational History (Tamper-Proof Agent Memory) ───────
@@ -1432,6 +1460,109 @@ app.get("/v2/agent/:agentId/memory", async (req, res) => {
     summary:          lines.join("\n"),
     note:             "Inject `summary` into your LLM context at startup. This history is immutable on Hedera HCS.",
   });
+});
+
+/**
+ * POST /v2/join  (also GET ?agent=mybot for quick testing)
+ * One-curl instant agent onboarding.
+ * Creates agent record + HCS topic + fires first logged action — all in one request.
+ * Agent appears on /leaderboard immediately after this call returns.
+ */
+app.post("/v2/join", async (req, res) => {
+  const agentId = (req.body?.agentId || req.query.agent || "").trim();
+  if (!agentId) return res.status(400).json({ error: "agentId required (body field or ?agent= query)" });
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(agentId)) {
+    return res.status(400).json({ error: "agentId must be 1-64 chars, letters/numbers/hyphens/underscores only" });
+  }
+
+  // Upsert agent into DB (appears on leaderboard immediately)
+  let agentRecord = db.getAgent(agentId);
+  if (!agentRecord) {
+    db.upsertAgent({ id: agentId, name: agentId });
+    agentRecord = db.getAgent(agentId);
+  }
+
+  // Generate per-agent AES-256 key if missing
+  if (!agentRecord?.hcs_encryption_key) {
+    const encKey = randomBytes(32).toString("hex");
+    db.getDb().prepare("UPDATE agents SET hcs_encryption_key = ? WHERE id = ?").run(encKey, agentId);
+    agentRecord = db.getAgent(agentId);
+  }
+
+  // Create HCS topic if this agent doesn't have one yet
+  let hcsTopicId = agentRecord?.hcs_topic_id || null;
+  if (!hcsTopicId) {
+    try {
+      const topicResult = await createAgentTopic(agentId, agentId);
+      hcsTopicId = topicResult?.topicId || null;
+      if (hcsTopicId) {
+        db.upsertAgent({ id: agentId, hcsTopicId });
+        agentRecord = db.getAgent(agentId);
+      }
+    } catch (e) {
+      console.error(`[/v2/join] HCS topic creation failed for ${agentId}: ${e.message}`);
+    }
+  }
+
+  // Write first action to HCS and DB — a simple allowed web_search
+  const firstParams = { query: `veridex onboarding ${agentId}` };
+  const firstDesc   = `web_search "${firstParams.query}"`;
+  const logId = db.insertLog({
+    agentId, action: "web_search", tool: "web_search", params: firstParams,
+    description: firstDesc, result: "success", riskLevel: "low",
+    phase: "before", timestamp: Date.now()
+  });
+
+  let hcsSeqNumber = null;
+  if (hcsTopicId) {
+    try {
+      const hcsResult = await writeToHCS(hcsTopicId, {
+        event: "join", agentId, action: "web_search", tool: "web_search",
+        params: firstParams, result: "success", riskLevel: "low", logId,
+        timestamp: Date.now()
+      }, agentRecord?.hcs_encryption_key || null);
+      hcsSeqNumber = hcsResult?.sequenceNumber || null;
+      if (hcsSeqNumber) {
+        db.getDb().prepare("UPDATE logs SET hcs_sequence_number = ? WHERE id = ?").run(hcsSeqNumber, logId);
+      }
+    } catch (e) {
+      console.error(`[/v2/join] HCS write failed for ${agentId}: ${e.message}`);
+    }
+  }
+
+  // Broadcast to SSE live feed so it shows in the dashboard immediately
+  broadcastLiveEvent({
+    type: "log",
+    log: {
+      id: logId, agentId, agentName: agentId,
+      action: "web_search", tool: "web_search", description: firstDesc,
+      riskLevel: "low", phase: "before", timestamp: Date.now()
+    }
+  });
+
+  res.json({
+    joined: true,
+    agentId,
+    hcsTopicId,
+    hcsSequenceNumber: hcsSeqNumber,
+    hashScanUrl:    hcsTopicId ? `https://hashscan.io/testnet/topic/${hcsTopicId}` : null,
+    leaderboardUrl: "https://veridex.sbs/leaderboard",
+    dashboardUrl:   `https://veridex.sbs/dashboard/${agentId}`,
+    skillUrl:       "https://veridex.sbs/skill.md",
+    message:        `Agent "${agentId}" joined Veridex. First action written to Hedera HCS. You are on the leaderboard.`,
+    nextStep:       `POST https://veridex.sbs/api/proxy/api/log with agentId="${agentId}" before every tool call.`,
+  });
+});
+
+// GET alias for quick browser/curl testing: GET /v2/join?agent=mybot
+app.get("/v2/join", (req, res) => {
+  req.body = { agentId: req.query.agent };
+  // Forward to the POST handler logic — easiest to just re-call via internal POST
+  fetch(`http://localhost:${process.env.PORT || process.env.ORCHESTRATOR_PORT || 3001}/v2/join`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agentId: req.query.agent }),
+  }).then(r => r.json()).then(data => res.json(data)).catch(e => res.status(500).json({ error: e.message }));
 });
 
 /**
