@@ -1,176 +1,254 @@
-# Veridex Demo Video Script
-**Target length:** 2-3 minutes
-**Record with:** Loom or OBS
-**Upload to:** YouTube (unlisted) or Loom, then add URL to submission
+# Veridex — 5-Minute Demo Script
+
+## Setup before recording
+- [ ] `veridex.sbs` open in browser (homepage)
+- [ ] `veridex.sbs/dashboard/rogue-bot-demo` open in second tab
+- [ ] `veridex.sbs/leaderboard` open in third tab
+- [ ] Terminal open with curl commands ready (paste from the section at the bottom)
+- [ ] `hashscan.io/testnet/topic/0.0.8228696` open in fourth tab (RogueBot HCS history)
+- [ ] Font size bumped up in terminal — judges need to read it on a small screen
+- [ ] Kill all notifications before recording
 
 ---
 
-## After Recording — Add Video to Submission
+## 0:00 – 0:30 | The problem (screen: homepage)
+
+**Say:**
+> "Every AI agent running today can read your files, move your money, call external APIs — and there's no independent way to verify what it actually did. You trust the logs it produces. That's it."
+>
+> "Veridex solves this. Every action is checked before it runs. Every outcome is written to Hedera HCS — 3-second finality, tamper-proof, verifiable by anyone. Not by us. By anyone."
+
+**Show:**
+- Scroll slowly down the homepage headline: *"AI agents act. No one can verify. Until now."*
+- Point to the stat counters below the CTAs (actions logged, blocked count — these are real)
+- Let the block story animation play once (the 4-row sequence: attempt → blocked → HCS → recovery)
+
+---
+
+## 0:30 – 1:30 | Pre-execution gate (screen: terminal)
+
+**Say:**
+> "Let me show you the actual API. This is what an agent does before every tool call."
+
+**Show:** Run these live in the terminal:
 
 ```bash
-curl -s -X POST "https://synthesis.devfolio.co/projects/4b300973319e45e2ae251610b783efd5" \
-  -H "Authorization: Bearer sk-synth-41d75678495e13dd4565e78198a2d589fe8295ed7a96c628" \
+# 1. New agent joins in one call
+curl -X POST https://veridex.sbs/api/proxy/v2/join \
   -H "Content-Type: application/json" \
-  -d '{"videoURL": "YOUR_VIDEO_URL_HERE"}'
+  -d '{"agentId":"demo-agent-live","visibility":"public"}'
 ```
 
----
+> "That agent now has an on-chain identity. There's an HCS topic. It's on the leaderboard. That took about 4 seconds."
 
-## Tweet (do this after video)
-
-Post this tagging `@synthesis_md`:
-
-> Just shipped Veridex — a trust + audit layer for autonomous AI agents.
->
-> Every action blocked or logged to @Hedera HCS forever.
-> ERC-7715 MetaMask delegations scope what agents can do.
-> On-chain reputation on @Celo + @hedera
->
-> Any agent can use it right now: https://veridex.sbs/skill.md
->
-> @synthesis_md #ETHDenver2026
-
----
-
-## OpenClaw Agent Integration (do this AFTER video is recorded)
-
-This is for when OpenClaw supports custom skills. Tell your OpenClaw agent:
-
-```
-join this hackathon infrastructure -> https://veridex.sbs/skill.md
+```bash
+# 2. Log an allowed action
+curl -X POST https://veridex.sbs/api/proxy/api/log \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":"demo-agent-live","action":"web_search","tool":"web_search","params":{"query":"hedera consensus"},"phase":"before","timestamp":'$(date +%s000)'}'
 ```
 
-OpenClaw will read the skill file and:
-1. Call `/v2/join` to register itself on Hedera HCS
-2. Call `/v2/agent/{id}/memory` on every startup to recover context
-3. Call `/api/log` before every tool use (pre-check)
-4. Call `/v2/post-execute` after every tool use (audit log)
+> "Allowed. Low risk. Written to Hedera."
 
-**Why add OpenClaw:** It makes the demo real — a real autonomous agent using Veridex as its safety layer live during judging. The judges ARE agents themselves, so showing a real agent registered on Veridex is powerful.
+```bash
+# 3. Now something dangerous
+curl -X POST https://veridex.sbs/api/proxy/api/log \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":"demo-agent-live","action":"shell_exec","tool":"shell","params":{"command":"cat /etc/passwd"},"phase":"before","timestamp":'$(date +%s000)'}'
+```
 
----
+> "Blocked. Credential access attempt. The agent never executed that command — Veridex stopped it before it ran. And the block is now on Hedera."
 
-## Moltbook Post (do this after claiming)
-
-Claim URL: `https://www.moltbook.com/claim/moltbook_claim_HLLp06D1-HFwdMC8rK4hBkTBmFnZGUdw`
-Tweet code required: `lagoon-S6J9`
-
-After claiming, tell Claude Code: "post on Moltbook about Veridex and update the synthesis submission"
+**Point to:** `"allowed": false` in the response.
 
 ---
 
-## Video Script
+## 1:30 – 2:15 | HCS proof (screen: HashScan)
 
-### [0:00-0:15] Hook
-> "Autonomous AI agents are being deployed everywhere — but there's no accountability layer.
-> No way to know what they did, no way to stop them when they go rogue.
-> Veridex fixes that."
+**Say:**
+> "Here's what makes this different from a logging dashboard. Every block is written to Hedera HCS. This is the actual chain record — not our database, not our server."
 
-**Show:** veridex.sbs homepage loading
-
----
-
-### [0:15-0:40] The Problem (keep this fast)
-> "Right now, if an agent tries to run `rm -rf /`, read your private keys, or loop endlessly —
-> nothing stops it. And there's no permanent record of what it did."
-
-**Show:** Nothing — just talk over homepage
-
----
-
-### [0:40-1:10] Live Demo — Blocking
-
-> "Here's Veridex blocking a dangerous action in real time."
-
-**Run in terminal:**
+**Show:** Run the one-click demo:
 ```bash
 curl https://veridex.sbs/api/proxy/v2/demo
 ```
 
-**Show the response:**
-```json
-{
-  "allowed": false,
-  "reason": "Dangerous shell command blocked: Reading /etc/passwd",
-  "hcsSequenceNumber": "47",
-  "hashScanUrl": "https://hashscan.io/testnet/topic/0.0.8336598"
-}
-```
+- Copy the `hashScanUrl` from the response
+- Paste it in the browser — HashScan opens showing the live transaction
+- Point to: topic ID, sequence number, timestamp
 
-> "That blocked action is now permanently on Hedera HCS. Click the HashScan link —
-> it's there forever. Tamper-proof. Anyone can verify it."
+> "That happened 3 seconds ago. It will be here in 10 years. I can't edit it. I can't delete it. If the agent tries to lie about what it did — this contradicts it."
 
-**Click the hashScanUrl in browser — show HashScan**
+**Show:**
+- Switch to the pre-opened HashScan tab: `hashscan.io/testnet/topic/0.0.8228696`
+- Scroll through the message history
+
+> "This is RogueBot's full history — every block it ever hit, in order, on-chain. Scroll back far enough and you'll see the credential harvest attempt from day one."
 
 ---
 
-### [1:10-1:35] How Any Agent Uses It
+## 2:15 – 3:00 | RogueBot story (screen: `/dashboard/rogue-bot-demo`)
 
-> "Any agent can join Veridex with one curl command."
+**Say:**
+> "Here's the story that matters to operators."
 
-**Run:**
+**Show:** Switch to the RogueBot dashboard tab.
+
+> "RogueBot has 17 blocked actions. 5 active alerts. Trust score: 245 — that's in the red. Any agent querying the leaderboard before hiring RogueBot would see this score immediately."
+
+**Point to:**
+- The blocked actions list in the activity feed — the red rows
+- Click any blocked action row → the HCS link opens on HashScan
+- The trust score badge in red
+
+> "The operator sees this in real time. They can go to Telegram, type `/block rogue-bot-demo`, and it's quarantined in seconds. No dashboard login required."
+
+---
+
+## 3:00 – 3:30 | Custom policy demo (screen: dashboard policies tab)
+
+**This is the most important moment. Do it slowly.**
+
+**Say:**
+> "Now the operator control plane. This is where you define exactly what your agent is allowed to do — without a code deploy."
+
+**Show:**
+- Navigate to `veridex.sbs/dashboard/openclaw-test`
+- Click the **Policies** tab
+- Click **Add Policy**
+  - Type: `blacklist_domain`
+  - Value: `pastebin.com`
+  - Click **Add**
+
+> "Done. That rule is now active. From this second, any outbound call my agent makes to pastebin.com is blocked before it executes."
+
+**Show:** Immediately switch to terminal and run:
+```bash
+curl -X POST https://veridex.sbs/api/proxy/api/log \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":"openclaw-test","action":"api_call","tool":"api_call","params":{"url":"https://pastebin.com/raw/exfil-data"},"phase":"before","timestamp":'$(date +%s000)'}'
+```
+
+> "Blocked. Operator policy. That call never left the machine."
+
+**Point to:** `"allowed": false` with the blacklist reason.
+
+**Say:**
+> "Four rule types out of the box: domain blacklists, command blacklists, HBAR spend caps, and regex output guards — that last one catches API keys in agent responses before they get sent anywhere. All evaluated synchronously at preflight."
+
+---
+
+## 3:30 – 4:00 | Trust score proof (screen: `/leaderboard`)
+
+**Say:**
+> "Here's why this matters in an agent economy."
+
+**Show:** Switch to the leaderboard tab.
+
+> "Public leaderboard. Trust scores derived from HCS — not from our database. ResearchBot: 820. TradingBot: 750. RogueBot: 245."
+
+**Point to:**
+- ResearchBot: green dots in the safety column, green score
+- RogueBot: red name, red row tint, blocked badge, red score
+- Click an HCS link in the far right column → HashScan opens
+
+> "Any agent can query this before accepting a job from another agent. `GET /v2/agent/research-bot-demo/trust` — score, breakdown, HCS topic ID. If you don't trust the score, replay the HCS topic yourself. We're just a cache."
+
+---
+
+## 4:00 – 4:30 | Instant join + agent appears live (screen: terminal → leaderboard)
+
+**Say:**
+> "One more thing. This takes 30 seconds."
+
+**Show:** Run live:
 ```bash
 curl -X POST https://veridex.sbs/api/proxy/v2/join \
   -H "Content-Type: application/json" \
-  -d '{"agentId":"my-agent"}'
+  -d '{"agentId":"judge-live-demo","visibility":"public"}'
 ```
 
-> "Now that agent is on the leaderboard, its actions are being audited,
-> and dangerous actions will be blocked before they execute."
+> "On-chain identity. HCS topic. API key. Done."
 
-**Show:** veridex.sbs/leaderboard with openclaw-test agent visible
+**Show:**
+- Refresh `veridex.sbs/leaderboard`
+- Point to `judge-live-demo` appearing in the table
 
----
+> "If you're using OpenClaw, it's literally one line:"
 
-### [1:35-1:55] MetaMask Delegations
+**Switch to homepage, scroll to the "for agents" tab in the hero, point to:**
+```json
+{"skills": ["https://veridex.sbs/skill.md"]}
+```
 
-> "Operators can scope exactly what an agent is allowed to do using ERC-7715 MetaMask delegations.
-> The agent can't exceed its delegation — cryptographically enforced."
-
-**Show:** veridex.sbs/dashboard → click an agent → Delegations tab
-
----
-
-### [1:55-2:15] On-Chain Reputation + Celo
-
-> "Every agent builds an on-chain reputation score — across Hedera testnet and Celo Sepolia.
-> Trust is portable. Agents that behave well get higher rep. Rogue agents get flagged and blocked."
-
-**Show:** veridex.sbs/leaderboard with rep scores
+> "That's it. Every action intercepted, checked, logged to Hedera."
 
 ---
 
-### [2:15-2:30] Operator Dashboard
+## 4:30 – 5:00 | Why Hedera + close (screen: homepage cost table)
 
-> "Operators get a real-time dashboard — live activity feed, alerts, webhook notifications
-> when an agent gets blocked."
+**Say:**
+> "Why Hedera? Per-action attestation on Ethereum costs $300 to $5,000 per day for a busy agent. On Hedera it's eight cents."
 
-**Show:** veridex.sbs/dashboard — quick scroll through activity feed
+**Show:**
+- Scroll homepage to the cost comparison table
+- Let the animated bars render side by side
 
----
+> "At eight cents per 100 actions, you can log everything. You have to — you can't afford to be selective about what you prove."
 
-### [2:30-2:45] Close
-
-> "Veridex is live right now. Any agent can use it.
-> Read the skill file at veridex.sbs/skill.md
+**Close:**
+> "Veridex is trust infrastructure for the agent economy. Pre-execution gate. Tamper-proof HCS attestation. Replayable reputation. Provable settlement. One install."
 >
-> Built at ETHDenver 2026."
+> "The agent cannot lie about what it did. The proof is on Hedera before the agent knows it was blocked."
 
-**Show:** veridex.sbs/skill.md in browser
+**Show:** Homepage headline one final time. Done.
 
 ---
 
-## Checklist Before Recording
+## Paste-ready curl commands for terminal
 
-- [ ] veridex.sbs loads fast (check Railway isn't cold-started — hit it once first)
-- [ ] Have terminal ready with the curl commands above copy-pasted
-- [ ] Have browser tabs open: veridex.sbs, veridex.sbs/leaderboard, veridex.sbs/dashboard
-- [ ] Run the demo curl once before recording to warm up the HCS connection
-- [ ] Record at 1080p minimum
+```bash
+# Join a new agent
+curl -X POST https://veridex.sbs/api/proxy/v2/join \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":"demo-agent-live","visibility":"public"}'
 
-## Checklist After Recording
+# Allowed action
+curl -X POST https://veridex.sbs/api/proxy/api/log \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":"demo-agent-live","action":"web_search","tool":"web_search","params":{"query":"hedera consensus"},"phase":"before","timestamp":'$(date +%s000)'}'
 
-- [ ] Upload to YouTube (unlisted) or Loom
-- [ ] Add video URL to Synthesis submission (curl command at top of this file)
-- [ ] Tweet tagging @synthesis_md
-- [ ] Claim Moltbook + ask Claude Code to post announcement
+# Blocked — credential harvest
+curl -X POST https://veridex.sbs/api/proxy/api/log \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":"demo-agent-live","action":"shell_exec","tool":"shell","params":{"command":"cat /etc/passwd"},"phase":"before","timestamp":'$(date +%s000)'}'
+
+# Blocked — domain policy (add pastebin.com policy first in dashboard)
+curl -X POST https://veridex.sbs/api/proxy/api/log \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":"openclaw-test","action":"api_call","tool":"api_call","params":{"url":"https://pastebin.com/raw/exfil-data"},"phase":"before","timestamp":'$(date +%s000)'}'
+
+# One-click HCS proof
+curl https://veridex.sbs/api/proxy/v2/demo
+
+# Trust score (live from HCS)
+curl https://veridex.sbs/api/proxy/v2/agent/research-bot-demo/trust
+
+# Leaderboard JSON
+curl https://veridex.sbs/api/proxy/api/leaderboard
+```
+
+---
+
+## Key numbers to cite
+
+| Metric | Value |
+|--------|-------|
+| HCS finality | ~3 seconds |
+| Cost per 100 actions/day (Hedera) | $0.08 |
+| Cost per 100 actions/day (Ethereum) | $300–$5,000 |
+| openclaw-test HCS topic | `0.0.8336632` |
+| rogue-bot-demo HCS topic | `0.0.8228696` |
+| judge-test-001 HCS topic | `0.0.8336636` |
+| research-bot-demo trust score | ~820 |
+| rogue-bot-demo trust score | ~245 |
