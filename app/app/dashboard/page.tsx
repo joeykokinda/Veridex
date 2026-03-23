@@ -211,11 +211,37 @@ const DASHBOARD_TOUR_STEPS: TourStep[] = [
   },
 ];
 
+const EXAMPLE_DISMISSED_KEY = "veridex_example_dismissed";
+
 function ExampleAgentWithTour() {
   const { step, next, skip, active } = useTour(DASHBOARD_TOUR_STEPS, true);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(() =>
+    typeof window !== "undefined" && !!localStorage.getItem(EXAMPLE_DISMISSED_KEY)
+  );
 
-  if (dismissed) return null;
+  function dismiss() {
+    localStorage.setItem(EXAMPLE_DISMISSED_KEY, "1");
+    setDismissed(true);
+  }
+
+  if (dismissed) {
+    return (
+      <div style={{ textAlign: "center", padding: "80px 24px" }}>
+        <div style={{ fontSize: "22px", fontWeight: 700, marginBottom: "10px" }}>Add your first agent</div>
+        <p style={{ fontSize: "14px", color: "var(--text-tertiary)", marginBottom: "28px", maxWidth: "360px", margin: "0 auto 28px" }}>
+          Register your agent and add the Veridex skill — every action will be checked and logged to Hedera HCS automatically.
+        </p>
+        <Link href="/dashboard/add" style={{ display: "inline-block", background: "#10b981", borderRadius: "8px", padding: "11px 32px", fontSize: "14px", fontWeight: 700, color: "#000", textDecoration: "none" }}>
+          + Register your first agent
+        </Link>
+        <div style={{ marginTop: "16px" }}>
+          <button onClick={() => { localStorage.removeItem(EXAMPLE_DISMISSED_KEY); setDismissed(false); }} style={{ background: "none", border: "none", color: "var(--text-tertiary)", fontSize: "12px", cursor: "pointer" }}>
+            Show example again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -285,7 +311,7 @@ function ExampleAgentWithTour() {
       {!active && (
         <div style={{ marginTop: "12px", textAlign: "center" }}>
           <button
-            onClick={() => setDismissed(true)}
+            onClick={dismiss}
             style={{ background: "none", border: "none", color: "var(--text-tertiary)", fontSize: "12px", cursor: "pointer", textDecoration: "underline" }}
           >
             Dismiss example

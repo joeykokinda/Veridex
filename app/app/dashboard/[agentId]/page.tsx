@@ -492,6 +492,32 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       nextLabel: "Skip",
     },
     {
+      targetId: "tour-recovery-stats",
+      title: "What your agent wakes up to",
+      body: "HCS Messages is the total count written to your agent's Hedera topic. Blocked Actions shows what was stopped. Open Jobs and Completions let the agent pick up exactly where it left off — the Recovery Context box is what gets injected into the agent's LLM prompt on restart.",
+      position: "bottom",
+    },
+    {
+      targetId: "tour-tab-settings",
+      title: "Telegram kill-switch",
+      body: "Connect @veridex_manager_bot and you can manage this agent entirely from your phone. No dashboard needed — text a command, get a response.",
+      position: "bottom",
+      action: { label: "Open Settings →", onClick: () => setTab("settings") },
+      nextLabel: "Skip",
+    },
+    {
+      targetId: "tour-telegram-commands",
+      title: "Commands you can send",
+      body: "/block <agentId> quarantines the agent immediately — all future actions blocked. /unblock restores it. /status gives a live health report. /logs shows the last 10 actions. All from Telegram.",
+      position: "bottom",
+    },
+    {
+      targetId: "tour-telegram-connect",
+      title: "Connect in 30 seconds",
+      body: "Open @veridex_manager_bot on Telegram, send /start — it replies with your chat ID. Paste it here and hit Save. You'll get a test message to confirm it's working.",
+      position: "bottom",
+    },
+    {
       targetId: "tour-tab-delegations",
       title: "ERC-7715 delegations",
       body: "Cryptographically scope your agent's capabilities. You sign off with MetaMask — Veridex enforces the allowed actions at every preflight. Revocable any time.",
@@ -1352,7 +1378,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
             <div style={{ marginTop: activeAlerts.length > 0 ? "24px" : "0", display: "flex", flexDirection: "column", gap: "12px" }}>
 
               {/* What it does + commands */}
-              <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "20px" }}>
+              <div id="tour-telegram-commands" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "20px" }}>
                 <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "6px" }}>Telegram integration</div>
                 <div style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: 1.7, marginBottom: "16px" }}>
                   Connect <span style={{ fontFamily: "monospace", color: "var(--text-primary)" }}>@veridex_manager_bot</span> to get instant alerts when this agent hits a blocked action or high-risk event — no dashboard login required. You can also manage your full fleet directly from Telegram.
@@ -1393,7 +1419,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               </div>
 
               {/* Connect form */}
-              <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "16px" }}>
+              <div id="tour-telegram-connect" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "16px" }}>
                 <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "10px" }}>
                   {agent.telegram_chat_id ? "Connected — update chat ID" : "Connect Telegram"}
                 </div>
@@ -1446,9 +1472,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               <RecoveryEmptyGuide />
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px" }}>
+                <div id="tour-recovery-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px" }}>
                   {[
-                    { label: "HCS Messages", value: memory.hcs_message_count ?? memory.lifetime_stats?.totalActions ?? 0, color: "var(--accent)" },
+                    { label: "HCS Messages", value: memory.hcs_message_count || memory.lifetime_stats?.totalActions || 0, color: "var(--accent)" },
                     { label: "Blocked Actions", value: memory.blocked_actions.length || memory.lifetime_stats?.blockedActions || 0, color: "#c0392b" },
                     { label: "Open Jobs", value: memory.open_jobs.length, color: "#f59e0b" },
                     { label: "Completions", value: memory.recent_completions.length, color: "#10b981" },
