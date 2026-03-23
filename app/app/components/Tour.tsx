@@ -67,7 +67,7 @@ export function TourBubble({ steps, step, next, skip }: {
     const el = document.getElementById(s.targetId);
     if (!el) {
       // fallback to center-bottom
-      setPos({ top: window.innerHeight - 200, left: window.innerWidth / 2 - 160, arrowDir: "none" });
+      setPos({ top: window.innerHeight - 220, left: window.innerWidth / 2 - 160, arrowDir: "none" });
       return;
     }
 
@@ -76,33 +76,33 @@ export function TourBubble({ steps, step, next, skip }: {
 
     const rect = el.getBoundingClientRect();
     const bubbleW = 320;
-    const bubbleH = 160;
-    const gap = 16;
+    const bubbleH = 170;
+    const gap = 14;
 
     let top = 0, left = 0, arrowDir = "top";
     const dir = s.position || "bottom";
 
     if (dir === "bottom") {
-      top = rect.bottom + gap + window.scrollY;
+      top = rect.bottom + gap;
       left = rect.left + rect.width / 2 - bubbleW / 2;
       arrowDir = "top";
     } else if (dir === "top") {
-      top = rect.top - bubbleH - gap + window.scrollY;
+      top = rect.top - bubbleH - gap;
       left = rect.left + rect.width / 2 - bubbleW / 2;
       arrowDir = "bottom";
     } else if (dir === "right") {
-      top = rect.top + rect.height / 2 - bubbleH / 2 + window.scrollY;
+      top = rect.top + rect.height / 2 - bubbleH / 2;
       left = rect.right + gap;
       arrowDir = "left";
     } else {
-      top = rect.top + rect.height / 2 - bubbleH / 2 + window.scrollY;
+      top = rect.top + rect.height / 2 - bubbleH / 2;
       left = rect.left - bubbleW - gap;
       arrowDir = "right";
     }
 
     // clamp to viewport
     left = Math.max(12, Math.min(left, window.innerWidth - bubbleW - 12));
-    top = Math.max(80, top);
+    top = Math.max(12, Math.min(top, window.innerHeight - bubbleH - 12));
 
     setPos({ top, left, arrowDir });
 
@@ -125,7 +125,7 @@ export function TourBubble({ steps, step, next, skip }: {
 
       {/* Bubble */}
       <div style={{
-        position: "absolute",
+        position: "fixed",
         top: pos.top,
         left: pos.left,
         width: 320,

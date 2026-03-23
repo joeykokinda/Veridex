@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Nav } from "../../components/Nav";
+import { DashboardHeader } from "../../components/DashboardHeader";
 import { useWallet } from "../../lib/wallet";
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
@@ -125,8 +125,8 @@ export default function AddAgentPage() {
 
   return (
     <>
-      <Nav />
-      <div style={{ maxWidth: "680px", margin: "92px auto 48px", padding: "0 24px" }}>
+      <DashboardHeader />
+      <div style={{ maxWidth: "680px", margin: "72px auto 48px", padding: "0 24px" }}>
         {/* Breadcrumb */}
         <div style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "24px" }}>
           <Link href="/dashboard" style={{ color: "var(--text-tertiary)", textDecoration: "none" }}>Dashboard</Link>

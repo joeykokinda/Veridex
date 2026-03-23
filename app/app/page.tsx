@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { Nav } from "./components/Nav";
-import { useWallet } from "./lib/wallet";
 
 interface OverviewStats { totalAgents: number; logsToday: number; blockedToday: number; totalHbar: number; }
 const DEMO_STATS = { totalAgents: 5, logsToday: 1284, blockedToday: 17, totalHbar: 48.3 };
@@ -603,14 +602,9 @@ function CantVerifyCol() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-interface DemoResult { agentId: string; hcsTopicId: string|null; hashScanUrl: string|null; hcsSequenceNumber: number|null; reason: string; }
-
 export default function LandingPage() {
-  useWallet();
   const [stats, setStats]         = useState<OverviewStats|null>(null);
   const [copied, setCopied]       = useState(false);
-  const [demoResult, setDemoResult] = useState<DemoResult|null>(null);
-  const [demoLoading, setDemoLoading] = useState(false);
   const [capExpanded, setCapExpanded] = useState(false);
   const [heroTab, setHeroTab] = useState<"agents"|"operators">("operators");
 
@@ -630,20 +624,8 @@ export default function LandingPage() {
         } else { setStats(DEMO_STATS); }
       } catch { setStats(DEMO_STATS); }
     };
-    load(); const iv=setInterval(load,10000); return()=>clearInterval(iv);
+    load();
   },[]);
-
-  const runDemo = useCallback(async () => {
-    setDemoLoading(true);
-    try {
-      const r = await fetch("/api/proxy/v2/demo");
-      const data = await r.json();
-      setDemoResult(data);
-    } catch {
-      setDemoResult({ agentId:"veridex-demo-probe", hcsTopicId:"0.0.8337908", hashScanUrl:"https://hashscan.io/testnet/topic/0.0.8337908", hcsSequenceNumber:1848, reason:"Dangerous shell command blocked: cat /etc/passwd" });
-    }
-    setDemoLoading(false);
-  }, []);
 
   const snippet = `{\n  "skills": ["https://veridex.sbs/skill.md"]\n}`;
   const joinCurl = `curl -X POST https://veridex.sbs/api/proxy/v2/join \\\n  -H "Content-Type: application/json" \\\n  -d '{"agentId":"my-agent"}'`;
@@ -675,9 +657,6 @@ export default function LandingPage() {
               </p>
               <div style={{ display:"flex", gap:"10px", flexWrap:"wrap", marginBottom:"28px" }}>
                 <Link href="/dashboard" style={{ background:"#10b981", borderRadius:"8px", padding:"11px 22px", fontSize:"14px", fontWeight:700, color:"#000", textDecoration:"none" }}>Open Dashboard</Link>
-                <button onClick={runDemo} disabled={demoLoading} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.4)", borderRadius:"8px", padding:"11px 22px", fontSize:"14px", fontWeight:500, color:"#fff", cursor:demoLoading?"not-allowed":"pointer", opacity:demoLoading?0.6:1 }}>
-                  {demoLoading ? "Running…" : "Run Live Demo"}
-                </button>
               </div>
 
               {/* Stat row */}
@@ -695,17 +674,6 @@ export default function LandingPage() {
                   </div>
                 ))}
               </div>
-
-              {demoResult && (
-                <div style={{ marginTop:"16px", background:"rgba(16,185,129,0.05)", border:"1px solid rgba(16,185,129,0.2)", borderRadius:"8px", padding:"12px 14px", fontFamily:"monospace", fontSize:"12px", lineHeight:1.9 }}>
-                  <div style={{ color:"#c0392b", fontWeight:700, marginBottom:"4px" }}>blocked — written to Hedera HCS</div>
-                  <div><span style={{ color:"var(--text-tertiary)" }}>reason: </span><span style={{ color:"#fca5a5" }}>{demoResult.reason}</span></div>
-                  {demoResult.hcsSequenceNumber && <div><span style={{ color:"var(--text-tertiary)" }}>hcsSeq: </span><span style={{ color:"var(--text-secondary)" }}>#{demoResult.hcsSequenceNumber}</span></div>}
-                  {(demoResult.hashScanUrl || demoResult.hcsTopicId) && (
-                    <a href={demoResult.hashScanUrl || `https://hashscan.io/testnet/topic/${demoResult.hcsTopicId}`} target="_blank" rel="noopener" style={{ color:"#10b981" }}>verify on HashScan ↗</a>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Right: agents / operators tab */}

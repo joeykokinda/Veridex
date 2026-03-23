@@ -239,29 +239,50 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     {
       targetId: "tour-agent-stats",
       title: "Safety & reputation scores",
-      body: "Every blocked action lowers the safety score. A score below 600 triggers alerts. Reputation is calculated from task success, uptime, and peer ratings.",
+      body: "Every blocked action lowers the safety score. Below 600 triggers alerts. Reputation is calculated from task success, uptime, and peer ratings.",
       position: "bottom",
     },
     {
       targetId: "tour-activity-feed",
       title: "Live activity feed",
-      body: "Every action your agent takes appears here in real-time. Blocked actions show the threat reason and a link to the immutable Hedera HCS audit trail.",
+      body: "Every action your agent takes appears here in real-time. Blocked actions show the threat reason and link to the immutable Hedera HCS audit record.",
       position: "top",
     },
     {
       targetId: "tour-tab-policies",
       title: "Operator policies",
-      body: "Blacklist domains, cap HBAR spend, block shell commands — active instantly with no redeploy. Your agent checks policies before every action.",
+      body: "Restrict what your agent can do without touching its code. Rules are checked at every preflight — changes take effect immediately.",
       position: "bottom",
       action: { label: "Open Policies →", onClick: () => setTab("policies") },
       nextLabel: "Skip",
     },
     {
+      targetId: "tour-policy-form",
+      title: "Add a blocking rule",
+      body: "Choose a type — blacklist a domain, block a shell command, cap HBAR spend, or use a regex. Try the quick demo buttons to fill in an example instantly.",
+      position: "bottom",
+    },
+    {
+      targetId: "tour-tab-recovery",
+      title: "Memory recovery",
+      body: "If your agent restarts or loses connectivity, it can replay its Hedera HCS topic to recover open jobs, blocked actions, and pending earnings — no local state needed.",
+      position: "bottom",
+      action: { label: "Open Recovery →", onClick: () => setTab("recovery") },
+      nextLabel: "Skip",
+    },
+    {
       targetId: "tour-tab-delegations",
       title: "ERC-7715 delegations",
-      body: "Cryptographically scope what your agent is allowed to do. Signed by your wallet, enforced before every tool call. Revocable any time.",
+      body: "Cryptographically scope your agent's capabilities. You sign off with MetaMask — Veridex enforces the allowed actions at every preflight. Revocable any time.",
       position: "bottom",
       action: { label: "Open Delegations →", onClick: () => setTab("delegations") },
+      nextLabel: "Skip",
+    },
+    {
+      targetId: "tour-delegation-form",
+      title: "Sign & delegate",
+      body: "Check the actions you want to allow, pick a caveat type, then hit Sign & Delegate. MetaMask signs the delegation — your agent can only do what you approved.",
+      position: "bottom",
       nextLabel: "Done ✓",
     },
   ], []);
@@ -656,7 +677,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   return (
     <>
       <Nav />
-      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "92px 24px 32px" }}>
+      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "72px 24px 32px" }}>
 
         {/* Breadcrumb */}
         <div style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "20px" }}>
@@ -987,7 +1008,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         {/* ── Policies ───────────────────────────────────────────────────────── */}
         {tab === "policies" && (
           <div>
-            <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "20px", marginBottom: "24px" }}>
+            <div id="tour-policy-form" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "20px", marginBottom: "24px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "14px" }}>
                 <div style={{ fontSize: "13px", fontWeight: 600 }}>Add Blocking Rule</div>
                 <span style={{ fontSize: "10px", padding: "1px 7px", borderRadius: "10px", background: "rgba(168,85,247,0.1)", border: "1px solid rgba(168,85,247,0.3)", color: "#a855f7" }}>for operators</span>
@@ -1249,7 +1270,7 @@ const memory = await r.json();
           <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
 
             {/* Create Delegation */}
-            <div style={{ background: "var(--bg-secondary)", border: "1px solid rgba(16,185,129,0.35)", borderRadius: "8px", padding: "20px" }}>
+            <div id="tour-delegation-form" style={{ background: "var(--bg-secondary)", border: "1px solid rgba(16,185,129,0.35)", borderRadius: "8px", padding: "20px" }}>
               <div style={{ fontSize: "14px", fontWeight: 700, marginBottom: "4px" }}>Grant Capability Delegation (ERC-7715)</div>
               <div style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "18px", lineHeight: 1.6 }}>
                 Define exactly what this agent is allowed to do. The wallet owner signs the delegation — Veridex enforces it at every preflight check.

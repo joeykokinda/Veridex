@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
-import { Nav } from "../components/Nav";
+import { DashboardHeader } from "../components/DashboardHeader";
 import { useWallet } from "../lib/wallet";
 import { useTour, TourBubble, TourStep } from "../components/Tour";
 
@@ -256,8 +256,8 @@ export default function DashboardPage() {
 
   return (
     <>
-      <Nav />
-      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "92px 24px 32px" }}>
+      <DashboardHeader />
+      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "72px 24px 32px" }}>
 
         {/* Global alert banner */}
         {highAlertAgent && (
