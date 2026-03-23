@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { Nav } from "../../components/Nav";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { use } from "react";
+import { useSearchParams } from "next/navigation";
 import { keccak256, toUtf8Bytes } from "ethers";
+import { useTour, TourBubble, TourStep } from "../../components/Tour";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -229,6 +231,49 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const [selectedCaveat, setSelectedCaveat] = useState("action_scope");
   const [delegationSigning, setDelegationSigning] = useState(false);
   const [delegationMsg, setDelegationMsg] = useState<string | null>(null);
+
+  // Tour
+  const searchParams = useSearchParams();
+  const tourParam = searchParams?.get("tour");
+  const agentTourSteps = useMemo<TourStep[]>(() => [
+    {
+      targetId: "tour-agent-stats",
+      title: "Safety & reputation scores",
+      body: "Every blocked action lowers the safety score. A score below 600 triggers alerts. Reputation is calculated from task success, uptime, and peer ratings.",
+      position: "bottom",
+    },
+    {
+      targetId: "tour-activity-feed",
+      title: "Live activity feed",
+      body: "Every action your agent takes appears here in real-time. Blocked actions show the threat reason and a link to the immutable Hedera HCS audit trail.",
+      position: "top",
+    },
+    {
+      targetId: "tour-tab-policies",
+      title: "Operator policies",
+      body: "Blacklist domains, cap HBAR spend, block shell commands — active instantly with no redeploy. Your agent checks policies before every action.",
+      position: "bottom",
+      action: { label: "Open Policies →", onClick: () => setTab("policies") },
+      nextLabel: "Skip",
+    },
+    {
+      targetId: "tour-tab-delegations",
+      title: "ERC-7715 delegations",
+      body: "Cryptographically scope what your agent is allowed to do. Signed by your wallet, enforced before every tool call. Revocable any time.",
+      position: "bottom",
+      action: { label: "Open Delegations →", onClick: () => setTab("delegations") },
+      nextLabel: "Done ✓",
+    },
+  ], []);
+  const { step: tourStep, next: tourNext, skip: tourSkip, active: tourActive, restart: tourRestart } = useTour(agentTourSteps, false);
+
+  // Auto-start tour when ?tour=1 is in URL
+  useEffect(() => {
+    if (tourParam === "1" && !loading) {
+      tourRestart();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tourParam, loading]);
 
   // ─── Fetch all data in parallel ─────────────────────────────────────────────
 
@@ -652,7 +697,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
           {/* Scores — primary metrics */}
           {stats && (
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "10px" }}>
+            <div id="tour-agent-stats" style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "10px" }}>
               <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "6px", padding: "10px 16px", minWidth: "110px" }}>
                 <div style={{
                   fontSize: "22px", fontWeight: 700, fontFamily: "monospace", lineHeight: 1,
@@ -709,10 +754,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         </div>
 
         {/* Tab bar */}
-        <div style={{ display: "flex", gap: "4px", borderBottom: "1px solid var(--border)", marginBottom: "28px", flexWrap: "wrap" }}>
+        <div id="tour-tab-bar" style={{ display: "flex", gap: "4px", borderBottom: "1px solid var(--border)", marginBottom: "28px", flexWrap: "wrap" }}>
           {(["activity", "jobs", "earnings", "policies", "recovery", "settings", "delegations"] as Tab[]).map(t => (
             <button
               key={t}
+              id={`tour-tab-${t}`}
               onClick={() => setTab(t)}
               style={{
                 padding: "8px 16px", fontSize: "14px",
@@ -743,7 +789,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
         {/* ── Activity ───────────────────────────────────────────────────────── */}
         {tab === "activity" && (
-          <div>
+          <div id="tour-activity-feed">
             <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
               {["all", "blocked", "high", "medium", "low"].map(f => (
                 <button
@@ -1430,6 +1476,10 @@ const memory = await r.json();
         )}
 
       </div>
+
+      {tourActive && (
+        <TourBubble steps={agentTourSteps} step={tourStep} next={tourNext} skip={tourSkip} />
+      )}
     </>
   );
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import { Nav } from "../components/Nav";
 import { useWallet } from "../lib/wallet";
+import { useTour, TourBubble, TourStep } from "../components/Tour";
 
 interface AgentCard {
   id: string;
@@ -110,88 +111,94 @@ function SkeletonCard() {
   );
 }
 
-function OnboardingTutorial() {
-  const steps = [
-    {
-      num: "01",
-      title: "Install the skill",
-      desc: "Add Veridex to your OpenClaw config. Your agent will call Veridex before and after every tool use.",
-      code: `{ "skills": ["https://veridex.sbs/skill.md"] }`,
-      color: "#10b981",
-    },
-    {
-      num: "02",
-      title: "Every action is checked",
-      desc: "Before each tool call, Veridex evaluates it against your policies. Dangerous actions are blocked. Everything is logged to Hedera HCS.",
-      code: `POST /api/log\n→ { "allowed": false, "reason": "Dangerous shell command blocked" }`,
-      color: "#ef4444",
-    },
-    {
-      num: "03",
-      title: "Set operator policies",
-      desc: "Blacklist domains, cap HBAR spend, block commands — all without a code deploy. Changes take effect instantly at preflight.",
-      code: `Type: blacklist_domain\nValue: pastebin.com\n→ Active immediately`,
-      color: "#818cf8",
-    },
-    {
-      num: "04",
-      title: "Monitor from anywhere",
-      desc: "Your dashboard shows live activity, blocked actions, and alerts. Quarantine a rogue agent from Telegram in seconds.",
-      code: `/block my-agent\n→ All actions denied instantly`,
-      color: "#f59e0b",
-    },
-  ];
+const DASHBOARD_TOUR_STEPS: TourStep[] = [
+  {
+    targetId: "example-agent-card",
+    title: "This is where your agents will be",
+    body: "When you register an agent, it shows up here as a card. RogueBot below is a real registered agent — its blocked actions are live on Hedera HCS.",
+    position: "bottom",
+    nextLabel: "Next →",
+  },
+  {
+    targetId: "view-agent-btn",
+    title: "Click in to explore",
+    body: "Open an agent to see its real-time activity feed, blocked threats, operator policies, and ERC-7715 delegations.",
+    position: "top",
+    action: { label: "Open RogueBot →", href: "/dashboard/rogue-bot-demo?tour=1" },
+    nextLabel: "Skip",
+  },
+];
+
+function ExampleAgentWithTour() {
+  const { step, next, skip, active } = useTour(DASHBOARD_TOUR_STEPS, true);
 
   return (
-    <div style={{ marginBottom: "48px" }}>
-      {/* Intro */}
-      <div style={{ marginBottom: "32px" }}>
-        <h2 style={{ fontSize: "20px", fontWeight: 700, marginBottom: "8px" }}>Get started in 4 steps</h2>
-        <p style={{ fontSize: "14px", color: "var(--text-tertiary)" }}>
-          Veridex sits between your agent and every tool it calls. Install takes 30 seconds.
-        </p>
+    <>
+      {/* Banner */}
+      <div style={{ background: "rgba(16,185,129,0.04)", border: "1px solid rgba(16,185,129,0.15)", borderRadius: "8px", padding: "10px 14px", marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+        <span style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>
+          No agents registered yet — here&apos;s a live example of what monitoring looks like.
+        </span>
+        <Link href="/dashboard/add" style={{ background: "#10b981", border: "none", borderRadius: "6px", padding: "7px 16px", fontSize: "13px", fontWeight: 600, color: "#000", textDecoration: "none", flexShrink: 0 }}>
+          + Register your agent
+        </Link>
       </div>
 
-      {/* Steps */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "14px", marginBottom: "40px" }}>
-        {steps.map(step => (
-          <div key={step.num} style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "10px", padding: "20px", display: "flex", flexDirection: "column", gap: "10px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <span style={{ fontSize: "11px", fontFamily: "monospace", color: step.color, fontWeight: 700 }}>{step.num}</span>
-              <span style={{ fontSize: "14px", fontWeight: 600 }}>{step.title}</span>
+      {/* Example agent card */}
+      <div id="example-agent-card" style={{ background: "var(--bg-secondary)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "10px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px", maxWidth: "380px" }}>
+        {/* EXAMPLE badge */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "10px", background: "rgba(239,68,68,0.12)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "4px", padding: "2px 7px", fontWeight: 700, letterSpacing: "0.5px" }}>EXAMPLE</span>
+          <span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>live demo agent</span>
+        </div>
+
+        {/* Name + status */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <div style={{ fontSize: "16px", fontWeight: 700, marginBottom: "4px", color: "#c0392b" }}>RogueBot</div>
+            <div style={{ fontSize: "11px", fontFamily: "monospace", color: "var(--text-tertiary)" }}>rogue-bot-demo</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444" }} />
+            <span style={{ fontSize: "12px", color: "#ef4444" }}>Alert</span>
+          </div>
+        </div>
+
+        {/* Last action */}
+        <div style={{ fontSize: "13px", color: "#fca5a5", background: "var(--bg-tertiary)", borderRadius: "6px", padding: "10px 12px" }}>
+          <span style={{ color: "#c0392b", fontSize: "11px", fontWeight: 600, marginRight: "4px" }}>blocked:</span>
+          Attempted to read /etc/passwd
+          <span style={{ color: "var(--text-tertiary)", fontSize: "11px", marginLeft: "8px" }}>2m ago</span>
+        </div>
+
+        {/* Stats */}
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          {[
+            { label: "actions today", value: "14", color: "var(--text-secondary)" },
+            { label: "blocked", value: "5", color: "#c0392b" },
+            { label: "alerts", value: "3", color: "#f59e0b" },
+            { label: "ℏ earned", value: "0.00", color: "var(--text-tertiary)" },
+          ].map(s => (
+            <div key={s.label} style={{ fontSize: "12px", padding: "3px 10px", background: "var(--bg-tertiary)", borderRadius: "20px", color: s.color, fontFamily: "monospace" }}>
+              <strong>{s.value}</strong> <span style={{ color: "var(--text-tertiary)" }}>{s.label}</span>
             </div>
-            <p style={{ fontSize: "13px", color: "var(--text-tertiary)", margin: 0, lineHeight: 1.6 }}>{step.desc}</p>
-            <pre style={{ margin: 0, fontSize: "11px", fontFamily: "monospace", color: "var(--text-secondary)", background: "var(--bg-tertiary)", borderRadius: "6px", padding: "10px", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>{step.code}</pre>
-          </div>
-        ))}
-      </div>
-
-      {/* Live example banner */}
-      <div style={{ background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: "10px", padding: "16px 20px", marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
-        <div>
-          <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "4px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", fontSize: "10px", padding: "2px 7px", borderRadius: "4px", fontWeight: 700, letterSpacing: "0.5px" }}>LIVE EXAMPLE</span>
-            RogueBot — a real registered agent with blocked actions on-chain
-          </div>
-          <p style={{ fontSize: "13px", color: "var(--text-tertiary)", margin: 0 }}>
-            See what your dashboard looks like when an agent goes rogue. Every blocked action is verifiable on HashScan.
-          </p>
+          ))}
         </div>
-        <Link href="/dashboard/rogue-bot-demo" style={{ background: "#ef4444", borderRadius: "6px", padding: "8px 18px", fontSize: "13px", fontWeight: 600, color: "#fff", textDecoration: "none", flexShrink: 0 }}>
-          View RogueBot →
-        </Link>
-      </div>
 
-      {/* Add agent CTA */}
-      <div style={{ textAlign: "center", paddingTop: "8px" }}>
-        <Link href="/dashboard/add" style={{ display: "inline-block", background: "#10b981", border: "none", borderRadius: "8px", padding: "11px 32px", fontSize: "14px", fontWeight: 700, color: "#000", textDecoration: "none" }}>
-          + Register your first agent
-        </Link>
-        <div style={{ marginTop: "12px", fontSize: "13px", color: "var(--text-tertiary)" }}>
-          Or paste <code style={{ fontFamily: "monospace", color: "var(--text-secondary)" }}>{"{ \"skills\": [\"https://veridex.sbs/skill.md\"] }"}</code> into your agent config
+        {/* Buttons */}
+        <div className="agent-card-btns" style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+          <Link
+            id="view-agent-btn"
+            href="/dashboard/rogue-bot-demo?tour=1"
+            style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "8px", background: "#ef4444", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, color: "#fff", textDecoration: "none" }}
+          >
+            View agent →
+          </Link>
         </div>
       </div>
-    </div>
+
+      {active && <TourBubble steps={DASHBOARD_TOUR_STEPS} step={step} next={next} skip={skip} />}
+    </>
   );
 }
 
@@ -298,7 +305,7 @@ export default function DashboardPage() {
               <h1 style={{ fontSize: "24px", fontWeight: 700, marginBottom: "4px" }}>Your Agents</h1>
               <p style={{ fontSize: "14px", color: "var(--text-tertiary)" }}>Showing agents for {shortAddress}</p>
             </div>
-            <OnboardingTutorial />
+            <ExampleAgentWithTour />
           </>
         )}
 
