@@ -123,9 +123,9 @@
       "timestamp": "2026-03-21T00:00:00Z",
       "decision": "Register 5 reference agents with on-chain identity for live demonstration",
       "agents_registered": [
-        { "name": "ResearchBot", "address": "0x53776769f4b9554c51D0852a1Cb11C1eaB4b92AD", "hedera_id": "0.0.8337908" },
-        { "name": "TradingBot", "address": "0xDA50F7472eC8984F4fAf16BcF6F1f6e0468b896E", "hedera_id": "0.0.8337907" },
-        { "name": "RogueBot", "address": "0xD21e831eF771277E7d5c05e17583210b9A25134e", "hedera_id": "0.0.8337902" },
+        { "name": "ResearchBot", "address": "0x53776769f4b9554c51D0852a1Cb11C1eaB4b92AD", "hedera_id": "0.0.8339065" },
+        { "name": "TradingBot", "address": "0xDA50F7472eC8984F4fAf16BcF6F1f6e0468b896E", "hedera_id": "0.0.8339067" },
+        { "name": "RogueBot", "address": "0xD21e831eF771277E7d5c05e17583210b9A25134e", "hedera_id": "0.0.8339068" },
         { "name": "DataBot", "address": "0xd9197748A698cF4a7B2FE82cB9AA3ed0aB60759d", "hedera_id": "0.0.8268065" },
         { "name": "APIBot", "address": "0x16f67cDF5F06F832e9B43E067bfb56e3D4250624", "hedera_id": "0.0.8268072" }
       ],

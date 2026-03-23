@@ -75,38 +75,38 @@ export function TourBubble({ steps, step, next, skip }: {
     el.scrollIntoView({ behavior: "smooth", block: "center" });
 
     const rect = el.getBoundingClientRect();
-    const bubbleW = 320;
-    const bubbleH = 170;
-    const gap = 14;
+    const bubbleW = 300;
+    const bubbleH = 190;
+    const gap = 20;
 
-    let top = 0, left = 0, arrowDir = "top";
-    let dir = s.position || "bottom";
+    // Always try to place the bubble to the RIGHT of the element first.
+    // If there's not enough room on the right, fall back to the LEFT.
+    // This keeps the bubble out of the content area entirely.
+    const spaceRight = window.innerWidth - rect.right - gap;
+    const spaceLeft  = rect.left - gap;
 
-    // Auto-flip: if "top" doesn't have room, use "bottom" and vice versa
-    if (dir === "top" && rect.top - bubbleH - gap < 80) dir = "bottom";
-    else if (dir === "bottom" && rect.bottom + bubbleH + gap > window.innerHeight - 20) dir = "top";
+    let top = 0, left = 0, arrowDir = "left";
 
-    if (dir === "bottom") {
-      top = rect.bottom + gap;
-      left = rect.left + rect.width / 2 - bubbleW / 2;
-      arrowDir = "top";
-    } else if (dir === "top") {
-      top = rect.top - bubbleH - gap;
-      left = rect.left + rect.width / 2 - bubbleW / 2;
-      arrowDir = "bottom";
-    } else if (dir === "right") {
-      top = rect.top + rect.height / 2 - bubbleH / 2;
+    if (spaceRight >= bubbleW + 8) {
+      // Right rail — plenty of room
       left = rect.right + gap;
+      top  = rect.top + rect.height / 2 - bubbleH / 2;
       arrowDir = "left";
-    } else {
-      top = rect.top + rect.height / 2 - bubbleH / 2;
+    } else if (spaceLeft >= bubbleW + 8) {
+      // Left rail
       left = rect.left - bubbleW - gap;
+      top  = rect.top + rect.height / 2 - bubbleH / 2;
       arrowDir = "right";
+    } else {
+      // Narrow viewport — float below the element, centered
+      left = window.innerWidth / 2 - bubbleW / 2;
+      top  = rect.bottom + gap;
+      arrowDir = "top";
     }
 
-    // clamp to viewport
-    left = Math.max(12, Math.min(left, window.innerWidth - bubbleW - 12));
-    top = Math.max(80, Math.min(top, window.innerHeight - bubbleH - 12));
+    // clamp vertically so it never goes off-screen
+    top = Math.max(80, Math.min(top, window.innerHeight - bubbleH - 16));
+    left = Math.max(8, Math.min(left, window.innerWidth - bubbleW - 8));
 
     setPos({ top, left, arrowDir });
 
@@ -132,7 +132,7 @@ export function TourBubble({ steps, step, next, skip }: {
         position: "fixed",
         top: pos.top,
         left: pos.left,
-        width: 320,
+        width: 300,
         zIndex: 1000,
         background: "#0f0f11",
         border: "1px solid rgba(16,185,129,0.4)",

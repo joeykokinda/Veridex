@@ -46,7 +46,7 @@ curl https://veridex.sbs/api/proxy/v2/agent/your-agent-id/trust
 ```
 ```json
 { "safety": 965, "reputation": 750, "summary": "trustworthy",
-  "hcsTopicId": "0.0.8337907", "warnings": [] }
+  "hcsTopicId": "0.0.8339067", "warnings": [] }
 ```
 
 ---
