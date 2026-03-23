@@ -40,8 +40,10 @@ logs/job-events.json
 # Internal docs (for Rex only)
 *.md
 !README.md
+!app/public/skill.md
 
-# SQLite WAL/SHM files (runtime state, not source)
+# SQLite database + WAL/SHM files (runtime state, not source)
+*.db
 *.db-shm
 *.db-wal
 
