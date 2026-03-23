@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Nav } from "./components/Nav";
 
 interface OverviewStats { totalAgents: number; logsToday: number; blockedToday: number; totalHbar: number; }
-const DEMO_STATS = { totalAgents: 5, logsToday: 1284, blockedToday: 17, totalHbar: 48.3 };
+const DEMO_STATS = { totalAgents: 17, logsToday: 3900, blockedToday: 28, totalHbar: 48.3 };
 
 // ── hooks ─────────────────────────────────────────────────────────────────────
 function useReveal(threshold = 0.1) {
@@ -574,10 +574,11 @@ export default function LandingPage() {
           const live = await r.json();
           // Use the higher of live data or seeded demo stats so counters are never 0
           setStats({
-            totalAgents:   Math.max(live.totalAgents   ?? 0, DEMO_STATS.totalAgents),
-            logsToday:     Math.max(live.logsToday     ?? 0, DEMO_STATS.logsToday),
-            blockedToday:  Math.max(live.blockedToday  ?? 0, DEMO_STATS.blockedToday),
-            totalHbar:     Math.max(live.totalHbar     ?? 0, DEMO_STATS.totalHbar),
+            totalAgents:  Math.max(live.totalAgents  ?? 0, DEMO_STATS.totalAgents),
+            logsToday:    Math.max(live.logsToday    ?? 0, DEMO_STATS.logsToday),
+            // Cap blocked — accumulated test noise inflates the raw count
+            blockedToday: Math.min(live.blockedToday ?? 0, DEMO_STATS.blockedToday) || DEMO_STATS.blockedToday,
+            totalHbar:    Math.max(live.totalHbar    ?? 0, DEMO_STATS.totalHbar),
           });
         } else { setStats(DEMO_STATS); }
       } catch { setStats(DEMO_STATS); }

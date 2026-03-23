@@ -1374,85 +1374,6 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               </div>
             )}
 
-            {/* Telegram — full docs + setup */}
-            <div style={{ marginTop: activeAlerts.length > 0 ? "24px" : "0", display: "flex", flexDirection: "column", gap: "12px" }}>
-
-              {/* What it does + commands */}
-              <div id="tour-telegram-commands" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "20px" }}>
-                <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "6px" }}>Telegram integration</div>
-                <div style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: 1.7, marginBottom: "16px" }}>
-                  Connect <span style={{ fontFamily: "monospace", color: "var(--text-primary)" }}>@veridex_manager_bot</span> to get instant alerts when this agent hits a blocked action or high-risk event — no dashboard login required. You can also manage your full fleet directly from Telegram.
-                </div>
-                <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px" }}>Available commands</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
-                  {[
-                    { cmd: "/agents", desc: "List all registered agents with live status and blocked counts" },
-                    { cmd: `/status ${decodedId}`, desc: "Full stats — actions, blocks, trust score, earnings" },
-                    { cmd: `/logs ${decodedId}`, desc: "Recent activity feed for this agent" },
-                    { cmd: `/block ${decodedId}`, desc: "Quarantine this agent — all future actions blocked immediately" },
-                    { cmd: `/unblock ${decodedId}`, desc: "Restore a quarantined agent" },
-                    { cmd: "/status", desc: "System-wide health — all agents, total actions today, active alerts" },
-                  ].map(({ cmd, desc }) => (
-                    <div key={cmd} style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
-                      <span style={{ fontFamily: "monospace", fontSize: "11px", color: "var(--accent)", background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.15)", borderRadius: "4px", padding: "2px 7px", whiteSpace: "nowrap", flexShrink: 0 }}>{cmd}</span>
-                      <span style={{ fontSize: "12px", color: "var(--text-tertiary)", lineHeight: 1.6, paddingTop: "2px" }}>{desc}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* How to get chat ID */}
-              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "8px", padding: "16px" }}>
-                <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "10px" }}>How to get your chat ID</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  {[
-                    "Open Telegram and search for @veridex_manager_bot",
-                    "Send /start — the bot replies with your chat ID",
-                    "Copy the number (looks like -100123456789 for groups, a plain number for DMs) and paste it below",
-                  ].map((text, i) => (
-                    <div key={i} style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
-                      <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--accent)", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: "50%", width: "18px", height: "18px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "1px" }}>{i + 1}</span>
-                      <span style={{ fontSize: "12px", color: "var(--text-tertiary)", lineHeight: 1.6 }}>{text}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Connect form */}
-              <div id="tour-telegram-connect" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "16px" }}>
-                <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "10px" }}>
-                  {agent.telegram_chat_id ? "Connected — update chat ID" : "Connect Telegram"}
-                </div>
-                {agent.telegram_chat_id && (
-                  <div style={{ fontSize: "12px", color: "var(--accent)", marginBottom: "10px" }}>
-                    Alerts are active for this agent
-                  </div>
-                )}
-                <div style={{ display: "flex", gap: "10px", alignItems: "flex-end", flexWrap: "wrap" }}>
-                  <div style={{ flex: 1, minWidth: "180px" }}>
-                    <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginBottom: "6px" }}>Chat ID</div>
-                    <input
-                      type="text"
-                      placeholder="e.g. -100123456789"
-                      value={telegramChatId}
-                      onChange={e => setTelegramChatId(e.target.value)}
-                      style={{ width: "100%", padding: "8px 10px", fontSize: "13px", background: "var(--bg-tertiary)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-primary)", fontFamily: "monospace", outline: "none", boxSizing: "border-box" as const }}
-                    />
-                  </div>
-                  <button onClick={saveTelegramConfig} disabled={telegramSaving || !telegramChatId.trim()} style={{ padding: "8px 16px", background: "var(--accent)", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, color: "#000", cursor: "pointer", opacity: (telegramSaving || !telegramChatId.trim()) ? 0.5 : 1, whiteSpace: "nowrap" }}>
-                    {telegramSaved ? "Saved" : telegramSaving ? "Saving..." : "Save"}
-                  </button>
-                  <button onClick={testTelegramConfig} disabled={telegramTesting} style={{ padding: "8px 16px", background: "transparent", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", color: "var(--text-secondary)", cursor: "pointer", opacity: telegramTesting ? 0.5 : 1, whiteSpace: "nowrap" }}>
-                    {telegramTesting ? "Sending..." : "Send test"}
-                  </button>
-                  {telegramTestMsg && (
-                    <span style={{ fontSize: "12px", color: telegramTestMsg.startsWith("Sent") ? "var(--accent)" : "#c0392b" }}>
-                      {telegramTestMsg}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -1733,6 +1654,84 @@ const memory = await r.json();
                   : "Hidden from leaderboard. Trust score requires your API key. Use for internal agents and compliance logging."}
               </div>
               {visibilitySaved && <div style={{ fontSize: "12px", color: "#10b981", marginTop: "8px" }}>Saved</div>}
+            </div>
+
+            {/* Telegram */}
+            <div id="tour-telegram-commands" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                <div style={{ fontSize: "14px", fontWeight: 600 }}>Telegram Alerts</div>
+                {agent.telegram_chat_id && (
+                  <span style={{ fontSize: "11px", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", color: "#10b981", borderRadius: "20px", padding: "2px 8px" }}>Connected</span>
+                )}
+              </div>
+              <div style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: 1.7, marginBottom: "20px" }}>
+                Monitor this agent on the go — get instant Telegram messages when a blocked action or high-risk event fires, without opening the dashboard. You can also send commands to check status or quarantine the agent from your phone.
+              </div>
+
+              {/* How to set up */}
+              <div style={{ background: "rgba(16,185,129,0.04)", border: "1px solid rgba(16,185,129,0.15)", borderRadius: "8px", padding: "14px 16px", marginBottom: "16px" }}>
+                <div style={{ fontSize: "11px", fontWeight: 700, color: "#10b981", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px" }}>Setup — takes 30 seconds</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "9px" }}>
+                  {[
+                    <>Open Telegram and search for <span style={{ fontFamily: "monospace", color: "var(--text-primary)" }}>@veridex_manager_bot</span></>,
+                    <>Send <span style={{ fontFamily: "monospace", color: "#10b981" }}>/start</span> — the bot replies with your chat ID (a number like <span style={{ fontFamily: "monospace", color: "var(--text-tertiary)" }}>123456789</span>)</>,
+                    "Paste the chat ID in the field below and hit Save",
+                    <>Hit <strong>Send test</strong> to confirm — you&apos;ll get a message in Telegram immediately</>,
+                  ].map((text, i) => (
+                    <div key={i} style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
+                      <span style={{ fontSize: "11px", fontWeight: 700, color: "#10b981", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "1px" }}>{i + 1}</span>
+                      <span style={{ fontSize: "12px", color: "var(--text-tertiary)", lineHeight: 1.65 }}>{text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Connect form */}
+              <div id="tour-telegram-connect" style={{ marginBottom: "20px" }}>
+                <div style={{ display: "flex", gap: "10px", alignItems: "flex-end", flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: "180px" }}>
+                    <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginBottom: "6px" }}>Your Telegram Chat ID</div>
+                    <input
+                      type="text"
+                      placeholder="e.g. 123456789"
+                      value={telegramChatId}
+                      onChange={e => setTelegramChatId(e.target.value)}
+                      style={{ width: "100%", padding: "8px 10px", fontSize: "13px", background: "var(--bg-tertiary)", border: "1px solid var(--border)", borderRadius: "6px", color: "var(--text-primary)", fontFamily: "monospace", outline: "none", boxSizing: "border-box" as const }}
+                    />
+                  </div>
+                  <button onClick={saveTelegramConfig} disabled={telegramSaving || !telegramChatId.trim()} style={{ padding: "8px 16px", background: "var(--accent)", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, color: "#000", cursor: "pointer", opacity: (telegramSaving || !telegramChatId.trim()) ? 0.5 : 1, whiteSpace: "nowrap" }}>
+                    {telegramSaved ? "Saved ✓" : telegramSaving ? "Saving..." : "Save"}
+                  </button>
+                  <button onClick={testTelegramConfig} disabled={telegramTesting || !agent.telegram_chat_id} style={{ padding: "8px 16px", background: "transparent", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "13px", color: "var(--text-secondary)", cursor: "pointer", opacity: (telegramTesting || !agent.telegram_chat_id) ? 0.5 : 1, whiteSpace: "nowrap" }}>
+                    {telegramTesting ? "Sending..." : "Send test"}
+                  </button>
+                  {telegramTestMsg && (
+                    <span style={{ fontSize: "12px", color: telegramTestMsg.startsWith("Sent") ? "var(--accent)" : "#c0392b" }}>
+                      {telegramTestMsg}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Commands reference */}
+              <div>
+                <div style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px" }}>What you can do from Telegram</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
+                  {[
+                    { cmd: `/status ${decodedId}`, desc: "Full stats — actions, blocks, trust score, earnings" },
+                    { cmd: `/logs ${decodedId}`, desc: "Recent activity feed for this agent" },
+                    { cmd: `/block ${decodedId}`, desc: "Quarantine immediately — all future actions blocked" },
+                    { cmd: `/unblock ${decodedId}`, desc: "Restore a quarantined agent" },
+                    { cmd: "/agents", desc: "List all your agents with live status" },
+                    { cmd: "/status", desc: "System-wide health across your whole fleet" },
+                  ].map(({ cmd, desc }) => (
+                    <div key={cmd} style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                      <span style={{ fontFamily: "monospace", fontSize: "11px", color: "var(--accent)", background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.15)", borderRadius: "4px", padding: "2px 7px", whiteSpace: "nowrap", flexShrink: 0 }}>{cmd}</span>
+                      <span style={{ fontSize: "12px", color: "var(--text-tertiary)", lineHeight: 1.6, paddingTop: "2px" }}>{desc}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* Danger zone */}
