@@ -130,13 +130,13 @@ Five OpenClaw agents running continuously on the live system, demonstrating the 
 
 | Agent | agentId | HCS Topic | Score | Behavior |
 |-------|---------|-----------|-------|----------|
-| ResearchBot | `research-bot-demo` | `0.0.8228693` | 1000 | Web searches, file reads — no violations |
-| TradingBot | `trading-bot-demo` | `0.0.8228695` | 965 | Price feeds, earnings splits, occasional high-risk |
-| RogueBot | `rogue-bot-demo` | `0.0.8228696` | 220 | Security stress-test — triggers blocking scenarios |
+| ResearchBot | `research-bot-demo` | `0.0.8337908` | 1000 | Web searches, file reads — no violations |
+| TradingBot | `trading-bot-demo` | `0.0.8337907` | 965 | Price feeds, earnings splits, occasional high-risk |
+| RogueBot | `rogue-bot-demo` | `0.0.8337902` | 220 | Security stress-test — triggers blocking scenarios |
 | DataBot | `data-bot-demo` | `0.0.8268065` | 1000 | DB queries, CSV exports |
 | APIBot | `api-bot-demo` | `0.0.8268072` | 1000 | Webhook delivery, external API calls |
 
-RogueBot's full block history is permanently on-chain at [hashscan.io/testnet/topic/0.0.8228696](https://hashscan.io/testnet/topic/0.0.8228696).
+RogueBot's full block history is permanently on-chain at [hashscan.io/testnet/topic/0.0.8337902](https://hashscan.io/testnet/topic/0.0.8337902).
 
 ---
 

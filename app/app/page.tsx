@@ -211,7 +211,7 @@ function HCSDemo() {
   const steps = [
     { n:1, label:'action logged', sub:'{ action, risk, agentId }', color:"#818cf8", active: ph>=1 },
     { n:2, label:'AES-256-GCM', sub: ph===2 ? 'encrypting…' : 'encrypted', color:"#f59e0b", active: ph>=2 },
-    { n:3, label:'HCS submitted', sub: ph>=3 ? 'topic 0.0.8228693 · seq #1848' : '…', color:"#818cf8", active: ph>=3 },
+    { n:3, label:'HCS submitted', sub: ph>=3 ? 'topic 0.0.8337908 · seq #1848' : '…', color:"#818cf8", active: ph>=3 },
     { n:4, label:'finality', sub: ph>=4 ? '✓ 3.2s — verifiable on HashScan' : '…', color:"#10b981", active: ph>=4 },
   ];
   return (
@@ -244,7 +244,7 @@ function RecoveryDemo() {
   const LINES = [
     { t:"agent restart detected",           c:"#f59e0b", d:0    },
     { t:"GET /v2/agent/my-agent/memory",    c:"#555",    d:600  },
-    { t:"reading HCS topic 0.0.8228693…",  c:"#555",    d:1200 },
+    { t:"reading HCS topic 0.0.8337908…",  c:"#555",    d:1200 },
     { t:"  2 open jobs",                    c:"#10b981", d:1900 },
     { t:"  1 blocked action (shell_exec)",  c:"#ef4444", d:2300 },
     { t:"  0.8 ℏ pending earnings",         c:"#f59e0b", d:2700 },
@@ -640,7 +640,7 @@ export default function LandingPage() {
       const data = await r.json();
       setDemoResult(data);
     } catch {
-      setDemoResult({ agentId:"veridex-demo-probe", hcsTopicId:"0.0.8228693", hashScanUrl:"https://hashscan.io/testnet/topic/0.0.8228693", hcsSequenceNumber:1848, reason:"Dangerous shell command blocked: cat /etc/passwd" });
+      setDemoResult({ agentId:"veridex-demo-probe", hcsTopicId:"0.0.8337908", hashScanUrl:"https://hashscan.io/testnet/topic/0.0.8337908", hcsSequenceNumber:1848, reason:"Dangerous shell command blocked: cat /etc/passwd" });
     }
     setDemoLoading(false);
   }, []);
@@ -947,9 +947,9 @@ export default function LandingPage() {
                 <div style={{ fontSize:"32px", fontFamily:"'Space Grotesk', monospace", fontWeight:700, color:"rgba(16,185,129,0.15)", lineHeight:1, marginBottom:"14px", letterSpacing:"-1px" }}>03</div>
                 <div style={{ background:"#060608", border:"1px solid rgba(255,255,255,0.05)", borderRadius:"6px", padding:"11px 13px", fontFamily:"monospace", fontSize:"11px", marginBottom:"18px", lineHeight:1.85 }}>
                   <div style={{ color:"#10b981" }}>HCS seq #1848 written · 3.1s</div>
-                  <div><span style={{ color:"#555" }}>topic: </span><span style={{ color:"#818cf8" }}>0.0.8228696</span></div>
+                  <div><span style={{ color:"#555" }}>topic: </span><span style={{ color:"#818cf8" }}>0.0.8337902</span></div>
                   <div><span style={{ color:"#555" }}>trust: </span><span style={{ color:"#ef4444" }}>245 </span><span style={{ color:"#555", fontSize:"10px" }}>(-50 blocked)</span></div>
-                  <a href="https://hashscan.io/testnet/topic/0.0.8228696" target="_blank" rel="noopener" style={{ color:"#444", fontSize:"10px", textDecoration:"none" }}>hashscan.io/testnet/... ↗</a>
+                  <a href="https://hashscan.io/testnet/topic/0.0.8337902" target="_blank" rel="noopener" style={{ color:"#444", fontSize:"10px", textDecoration:"none" }}>hashscan.io/testnet/... ↗</a>
                 </div>
                 <div style={{ fontSize:"15px", fontWeight:700, marginBottom:"8px", color:"var(--text-primary)" }}>Outcome written to Hedera</div>
                 <p style={{ fontSize:"13px", color:"var(--text-tertiary)", lineHeight:1.65, margin:0 }}>Tamper-proof. 3-second finality. Trust score is derived from HCS consensus — replayable by anyone, not just Veridex.</p>
@@ -1105,7 +1105,7 @@ export default function LandingPage() {
                           <div style={{ color:"#818cf8" }}>POST /agent/:id/webhook</div>
                           <div>event: <span style={{ color:"#10b981" }}>"blocked"</span></div>
                           <div>agentId: <span style={{ color:"#a3a3a3" }}>"rogue-bot"</span></div>
-                          <div>hcsTopicId: <span style={{ color:"#a3a3a3" }}>"0.0.8228693"</span></div>
+                          <div>hcsTopicId: <span style={{ color:"#a3a3a3" }}>"0.0.8337908"</span></div>
                           <div style={{ color:"#444" }}>fires &lt;5s · event-type filter</div>
                         </div>
                       </div>

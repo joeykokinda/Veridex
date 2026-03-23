@@ -24,11 +24,11 @@ interface AgentRow {
 
 // Seeded fallback — renders immediately on cold load
 const SEEDED: AgentRow[] = [
-  { id:"research-bot-demo", name:"ResearchBot", hcs_topic_id:"0.0.8228693", hashScanUrl:"https://hashscan.io/testnet/topic/0.0.8228693", totalActions:1247, blockedActions:0,  totalEarned:0,    activeAlerts:0, created_at:0, safetyScore:1000, trustScore:820, trustLabel:"excellent" },
-  { id:"trading-bot-demo",  name:"TradingBot",  hcs_topic_id:"0.0.8228695", hashScanUrl:"https://hashscan.io/testnet/topic/0.0.8228695", totalActions:892,  blockedActions:3,  totalEarned:48.3, activeAlerts:0, created_at:0, safetyScore:965,  trustScore:750, trustLabel:"good" },
+  { id:"research-bot-demo", name:"ResearchBot", hcs_topic_id:"0.0.8337908", hashScanUrl:"https://hashscan.io/testnet/topic/0.0.8337908", totalActions:1247, blockedActions:0,  totalEarned:0,    activeAlerts:0, created_at:0, safetyScore:1000, trustScore:820, trustLabel:"excellent" },
+  { id:"trading-bot-demo",  name:"TradingBot",  hcs_topic_id:"0.0.8337907", hashScanUrl:"https://hashscan.io/testnet/topic/0.0.8337907", totalActions:892,  blockedActions:3,  totalEarned:48.3, activeAlerts:0, created_at:0, safetyScore:965,  trustScore:750, trustLabel:"good" },
   { id:"data-bot-demo",     name:"DataBot",     hcs_topic_id:"0.0.8268065", hashScanUrl:"https://hashscan.io/testnet/topic/0.0.8268065", totalActions:634,  blockedActions:1,  totalEarned:0,    activeAlerts:0, created_at:0, safetyScore:940,  trustScore:700, trustLabel:"good" },
   { id:"api-bot-demo",      name:"APIBot",      hcs_topic_id:"0.0.8268072", hashScanUrl:"https://hashscan.io/testnet/topic/0.0.8268072", totalActions:412,  blockedActions:2,  totalEarned:0,    activeAlerts:0, created_at:0, safetyScore:910,  trustScore:680, trustLabel:"good" },
-  { id:"rogue-bot-demo",    name:"RogueBot",    hcs_topic_id:"0.0.8228696", hashScanUrl:"https://hashscan.io/testnet/topic/0.0.8228696", totalActions:347,  blockedActions:17, totalEarned:0,    activeAlerts:5, created_at:0, safetyScore:200,  trustScore:245, trustLabel:"dangerous" },
+  { id:"rogue-bot-demo",    name:"RogueBot",    hcs_topic_id:"0.0.8337902", hashScanUrl:"https://hashscan.io/testnet/topic/0.0.8337902", totalActions:347,  blockedActions:17, totalEarned:0,    activeAlerts:5, created_at:0, safetyScore:200,  trustScore:245, trustLabel:"dangerous" },
 ];
 
 function timeAgo(ts: number) {
