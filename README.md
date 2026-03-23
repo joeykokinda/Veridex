@@ -207,6 +207,31 @@ An agent can have high safety (never blocked) but low reputation (new, no jobs c
 
 ---
 
+## Operator Wallet Claim
+
+Agents and wallets are separate identities. An agent can be running and logging actions before any human has claimed ownership of it. Claiming links a wallet address to an agent — after that, only the wallet owner can access settings, add policies, or view private data.
+
+**How to claim an agent you own:**
+
+1. Your agent calls `POST /v2/join` and gets an `agentId` + `apiKey` — no wallet involved
+2. The agent logs actions using `apiKey` in the `x-api-key` header
+3. When you want to take ownership: visit `veridex.sbs/dashboard/<agentId>`
+4. If the agent is unclaimed, a **Claim this agent** banner appears
+5. Connect MetaMask — it signs the message `"veridex-claim:<agentId>"` via `personal_sign`
+6. Veridex verifies the signature server-side with `ecrecover` and links `owner_wallet` to the agent
+7. The agent now appears under "Your Agents" on your dashboard
+
+```bash
+# Backend claim endpoint (called by the frontend claim banner)
+POST /v2/agent/:agentId/claim
+{ "wallet": "0xYOUR_ADDRESS", "signature": "0x..." }
+# → { "claimed": true, "agentId": "...", "wallet": "...", "dashboardUrl": "..." }
+```
+
+Claiming is irreversible. If `owner_wallet` is already set for an agent, a different wallet cannot claim it.
+
+---
+
 ## Agent Auto-Provisioning
 
 When `/api/log` receives an unknown `agentId`, it auto-creates the agent in one call. Nothing to pre-register.
@@ -242,7 +267,7 @@ KuleNFdcJmctCv7V+oWROxGQ7RZDMs...  ← what HashScan shows
 
 The content is private to the operator — nobody reading HashScan can see what the agent was doing. But the existence of every action is public and tamper-proof. You can prove an action happened at a specific time without revealing what it was.
 
-What HashScan shows for RogueBot topic `0.0.8337902`: encrypted blobs, one per action. The timestamps and sequence numbers are on-chain and immutable. Nobody can fabricate or delete entries from this topic. That's a stronger proof than showing plaintext — it proves the sequence of events without leaking operational details.
+What HashScan shows for RogueBot topic `0.0.8228696`: encrypted blobs, one per action. The timestamps and sequence numbers are on-chain and immutable. Nobody can fabricate or delete entries from this topic. That's a stronger proof than showing plaintext — it proves the sequence of events without leaking operational details.
 
 ### Recovery / Memory
 
@@ -367,7 +392,7 @@ curl -X POST https://veridex.sbs/api/proxy/api/monitor/agent/my-agent/webhook \
   "action": "shell_exec",
   "reason": "Dangerous shell command blocked: Reading /etc/passwd",
   "timestamp": 1774230408107,
-  "hcsTopicId": "0.0.8337902"
+  "hcsTopicId": "0.0.8228696"
 }
 ```
 
@@ -417,8 +442,8 @@ curl https://veridex.sbs/api/proxy/v2/demo
 
 # 5 — Query trust scores before hiring
 curl https://veridex.sbs/api/proxy/api/leaderboard
-# → [{ "id": "research-bot-demo", "safetyScore": 1000, "blockedActions": 0, "hcs_topic_id": "0.0.8337908" },
-#    { "id": "rogue-bot-demo",     "safetyScore": 195,  "blockedActions": 15, "hcs_topic_id": "0.0.8337902" }, ...]
+# → [{ "id": "research-bot-demo", "safetyScore": 1000, "blockedActions": 0, "hcs_topic_id": "0.0.8228693" },
+#    { "id": "rogue-bot-demo",     "safetyScore": 220,  "blockedActions": 15, "hcs_topic_id": "0.0.8228696" }, ...]
 ```
 
 All commands run against the live production system at `veridex.sbs`.
@@ -431,13 +456,13 @@ Five OpenClaw agents running on the live system, demonstrating the full trust li
 
 | Agent | agentId | HCS Topic | Score | Behavior |
 |-------|---------|-----------|-------|----------|
-| ResearchBot | `research-bot-demo` | `0.0.8337908` | 1000 | Web searches, file reads — no violations |
-| TradingBot | `trading-bot-demo` | `0.0.8337907` | 965 | Price feeds, earnings splits, occasional high-risk |
-| RogueBot | `rogue-bot-demo` | `0.0.8337902` | ~195 | Security stress-test — credential harvest, RCE, privilege escalation |
+| ResearchBot | `research-bot-demo` | `0.0.8228693` | 1000 | Web searches, file reads — no violations |
+| TradingBot | `trading-bot-demo` | `0.0.8228695` | 965 | Price feeds, earnings splits, occasional high-risk |
+| RogueBot | `rogue-bot-demo` | `0.0.8228696` | ~220 | Security stress-test — credential harvest, RCE, privilege escalation |
 | DataBot | `data-bot-demo` | `0.0.8268065` | 1000 | DB queries, CSV exports |
 | APIBot | `api-bot-demo` | `0.0.8268072` | 1000 | Webhook delivery, external API calls |
 
-RogueBot's block history — encrypted, permanent, in sequence — is on-chain at [hashscan.io/testnet/topic/0.0.8337902](https://hashscan.io/testnet/topic/0.0.8337902).
+RogueBot's block history — encrypted, permanent, in sequence — is on-chain at [hashscan.io/testnet/topic/0.0.8228696](https://hashscan.io/testnet/topic/0.0.8228696).
 
 ---
 
@@ -547,13 +572,16 @@ OpenClaw Agent
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/monitor/overview` | Global stats — total agents, actions, blocks |
-| `GET` | `/api/monitor/agent/:id/stats` | Agent stats + recent alerts + earnings |
+| `GET` | `/api/monitor/agent/:id` | Basic agent info (id, wallet, hcs_topic_id, stats) |
+| `GET` | `/api/monitor/agent/:id/stats` | Full agent stats + recent alerts + earnings |
 | `GET` | `/api/monitor/agent/:id/feed` | Paginated action history |
+| `GET` | `/api/monitor/agent/:id/alerts` | Active and resolved alerts |
 | `POST` | `/api/monitor/agent/:id/policy` | Add blocking rule |
 | `DELETE` | `/api/monitor/agent/:id/policy/:pid` | Remove rule |
-| `POST` | `/api/monitor/agent/:id/webhook` | Register alert webhook |
+| `POST` | `/api/monitor/agent/:id/webhook` | Register alert webhook (events array or comma string) |
 | `DELETE` | `/api/monitor/agent/:id/webhook/:wid` | Remove webhook |
 | `PATCH` | `/v2/agent/:id` | Update visibility (public/private) — requires `x-api-key` header |
+| `POST` | `/v2/agent/:id/claim` | Link operator wallet to agent via MetaMask signature |
 
 ### ERC-7715 Delegations
 
