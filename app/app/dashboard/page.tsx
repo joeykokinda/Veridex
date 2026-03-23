@@ -234,11 +234,6 @@ function ExampleAgentWithTour() {
         <Link href="/dashboard/add" style={{ display: "inline-block", background: "#10b981", borderRadius: "8px", padding: "11px 32px", fontSize: "14px", fontWeight: 700, color: "#000", textDecoration: "none" }}>
           + Register your first agent
         </Link>
-        <div style={{ marginTop: "16px" }}>
-          <button onClick={() => { localStorage.removeItem(EXAMPLE_DISMISSED_KEY); setDismissed(false); }} style={{ background: "none", border: "none", color: "var(--text-tertiary)", fontSize: "12px", cursor: "pointer" }}>
-            Show example again
-          </button>
-        </div>
       </div>
     );
   }
@@ -308,16 +303,6 @@ function ExampleAgentWithTour() {
         </div>
       </div>
 
-      {!active && (
-        <div style={{ marginTop: "12px", textAlign: "center" }}>
-          <button
-            onClick={dismiss}
-            style={{ background: "none", border: "none", color: "var(--text-tertiary)", fontSize: "12px", cursor: "pointer", textDecoration: "underline" }}
-          >
-            Dismiss example
-          </button>
-        </div>
-      )}
 
       {active && <TourBubble steps={DASHBOARD_TOUR_STEPS} step={step} next={next} skip={skip} />}
     </>
