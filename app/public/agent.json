@@ -56,7 +56,7 @@
     "demo": "/api/proxy/v2/demo"
   },
   "skill_file": "https://veridex.sbs/skill.md",
-  "repo": "https://github.com/sp3ked/Denver2026",
+  "repo": "https://github.com/joeykokinda/Veridex",
   "deployed": "https://veridex.sbs",
   "version": "2.0.0",
   "built_at": "ETHDenver 2026"

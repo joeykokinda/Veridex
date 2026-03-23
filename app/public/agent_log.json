@@ -151,7 +151,7 @@
   ],
   "final_output": {
     "deployed_url": "https://veridex.sbs",
-    "repo": "https://github.com/sp3ked/Denver2026",
+    "repo": "https://github.com/joeykokinda/Veridex",
     "demo_endpoint": "https://veridex.sbs/api/proxy/v2/demo",
     "skill_file": "https://veridex.sbs/skill.md",
     "contracts_verified": true,

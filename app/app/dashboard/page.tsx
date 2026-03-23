@@ -43,13 +43,11 @@ function AgentCardUI({ agent, recentLogs }: { agent: AgentCard; recentLogs: Log[
 
   return (
     <div style={{ background: "var(--bg-secondary)", border: `1px solid ${agent.activeAlerts > 0 ? "rgba(239,68,68,0.4)" : "var(--border)"}`, borderRadius: "10px", padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
-      {/* Offline warning banner */}
       {"warning" in status && status.warning && (
         <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#f59e0b" }}>
           No recent activity — agent may be offline or skill not installed
         </div>
       )}
-      {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <div style={{ fontSize: "16px", fontWeight: 700, marginBottom: "4px" }}>{agent.name || agent.id}</div>
@@ -62,8 +60,6 @@ function AgentCardUI({ agent, recentLogs }: { agent: AgentCard; recentLogs: Log[
           <span style={{ fontSize: "12px", color: status.dot }}>{status.label}</span>
         </div>
       </div>
-
-      {/* Last action */}
       <div style={{ fontSize: "13px", color: lastLog?.riskLevel === "blocked" ? "#fca5a5" : "var(--text-secondary)", background: "var(--bg-tertiary)", borderRadius: "6px", padding: "10px 12px", minHeight: "40px" }}>
         {lastLog ? (
           <>
@@ -75,8 +71,6 @@ function AgentCardUI({ agent, recentLogs }: { agent: AgentCard; recentLogs: Log[
           <span style={{ color: "var(--text-tertiary)" }}>No actions recorded yet</span>
         )}
       </div>
-
-      {/* Stats pills */}
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
         {[
           { label: "actions today", value: agent.stats.actionsToday, color: "var(--text-secondary)" },
@@ -89,15 +83,11 @@ function AgentCardUI({ agent, recentLogs }: { agent: AgentCard; recentLogs: Log[
           </div>
         ))}
       </div>
-
-      {/* HCS link */}
       {agent.hcs_topic_id && (
         <div style={{ fontSize: "11px", fontFamily: "monospace", color: "var(--text-tertiary)" }}>
           HCS: <a href={agent.hashScanUrl} target="_blank" rel="noopener" style={{ color: "#10b981", textDecoration: "none" }}>{agent.hcs_topic_id} ↗</a>
         </div>
       )}
-
-      {/* Buttons */}
       <div className="agent-card-btns" style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
         <Link href={`/dashboard/${agent.id}`} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "8px", background: "#10b981", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, color: "#000", textDecoration: "none" }}>
           View agent
@@ -120,74 +110,125 @@ function SkeletonCard() {
   );
 }
 
+function OnboardingTutorial() {
+  const steps = [
+    {
+      num: "01",
+      title: "Install the skill",
+      desc: "Add Veridex to your OpenClaw config. Your agent will call Veridex before and after every tool use.",
+      code: `{ "skills": ["https://veridex.sbs/skill.md"] }`,
+      color: "#10b981",
+    },
+    {
+      num: "02",
+      title: "Every action is checked",
+      desc: "Before each tool call, Veridex evaluates it against your policies. Dangerous actions are blocked. Everything is logged to Hedera HCS.",
+      code: `POST /api/log\n→ { "allowed": false, "reason": "Dangerous shell command blocked" }`,
+      color: "#ef4444",
+    },
+    {
+      num: "03",
+      title: "Set operator policies",
+      desc: "Blacklist domains, cap HBAR spend, block commands — all without a code deploy. Changes take effect instantly at preflight.",
+      code: `Type: blacklist_domain\nValue: pastebin.com\n→ Active immediately`,
+      color: "#818cf8",
+    },
+    {
+      num: "04",
+      title: "Monitor from anywhere",
+      desc: "Your dashboard shows live activity, blocked actions, and alerts. Quarantine a rogue agent from Telegram in seconds.",
+      code: `/block my-agent\n→ All actions denied instantly`,
+      color: "#f59e0b",
+    },
+  ];
+
+  return (
+    <div style={{ marginBottom: "48px" }}>
+      {/* Intro */}
+      <div style={{ marginBottom: "32px" }}>
+        <h2 style={{ fontSize: "20px", fontWeight: 700, marginBottom: "8px" }}>Get started in 4 steps</h2>
+        <p style={{ fontSize: "14px", color: "var(--text-tertiary)" }}>
+          Veridex sits between your agent and every tool it calls. Install takes 30 seconds.
+        </p>
+      </div>
+
+      {/* Steps */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "14px", marginBottom: "40px" }}>
+        {steps.map(step => (
+          <div key={step.num} style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "10px", padding: "20px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "11px", fontFamily: "monospace", color: step.color, fontWeight: 700 }}>{step.num}</span>
+              <span style={{ fontSize: "14px", fontWeight: 600 }}>{step.title}</span>
+            </div>
+            <p style={{ fontSize: "13px", color: "var(--text-tertiary)", margin: 0, lineHeight: 1.6 }}>{step.desc}</p>
+            <pre style={{ margin: 0, fontSize: "11px", fontFamily: "monospace", color: "var(--text-secondary)", background: "var(--bg-tertiary)", borderRadius: "6px", padding: "10px", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>{step.code}</pre>
+          </div>
+        ))}
+      </div>
+
+      {/* Live example banner */}
+      <div style={{ background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: "10px", padding: "16px 20px", marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+        <div>
+          <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "4px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", fontSize: "10px", padding: "2px 7px", borderRadius: "4px", fontWeight: 700, letterSpacing: "0.5px" }}>LIVE EXAMPLE</span>
+            RogueBot — a real registered agent with blocked actions on-chain
+          </div>
+          <p style={{ fontSize: "13px", color: "var(--text-tertiary)", margin: 0 }}>
+            See what your dashboard looks like when an agent goes rogue. Every blocked action is verifiable on HashScan.
+          </p>
+        </div>
+        <Link href="/dashboard/rogue-bot-demo" style={{ background: "#ef4444", borderRadius: "6px", padding: "8px 18px", fontSize: "13px", fontWeight: 600, color: "#fff", textDecoration: "none", flexShrink: 0 }}>
+          View RogueBot →
+        </Link>
+      </div>
+
+      {/* Add agent CTA */}
+      <div style={{ textAlign: "center", paddingTop: "8px" }}>
+        <Link href="/dashboard/add" style={{ display: "inline-block", background: "#10b981", border: "none", borderRadius: "8px", padding: "11px 32px", fontSize: "14px", fontWeight: 700, color: "#000", textDecoration: "none" }}>
+          + Register your first agent
+        </Link>
+        <div style={{ marginTop: "12px", fontSize: "13px", color: "var(--text-tertiary)" }}>
+          Or paste <code style={{ fontFamily: "monospace", color: "var(--text-secondary)" }}>{"{ \"skills\": [\"https://veridex.sbs/skill.md\"] }"}</code> into your agent config
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { address, shortAddress, connect, isConnecting } = useWallet();
-  const [agents, setAgents]       = useState<AgentCard[]>([]);
-  const [recentLogs, setLogs]     = useState<Log[]>([]);
-  const [loading, setLoading]     = useState(false);
+  const [agents, setAgents]   = useState<AgentCard[]>([]);
+  const [recentLogs, setLogs] = useState<Log[]>([]);
+  const [loading, setLoading] = useState(false);
   const [dismissedAlerts, setDismissed] = useState<Set<string>>(new Set());
 
   const fetchAgents = useCallback(async (wallet: string) => {
     setLoading(true);
     try {
-      // Fetch agents by wallet
       const r = await fetch(`/api/proxy/api/monitor/agents?wallet=${wallet}`);
       const walletAgents: AgentCard[] = r.ok ? (await r.json()).agents || [] : [];
 
-      // Also fetch any agents claimed without wallet (stored in localStorage)
       const claimedIds: string[] = JSON.parse(localStorage.getItem("veridex_claimed_agents") || "[]");
       const extra: AgentCard[] = [];
       for (const id of claimedIds) {
-        if (walletAgents.find(a => a.id === id)) continue; // already in wallet list
+        if (walletAgents.find(a => a.id === id)) continue;
         try {
           const cr = await fetch(`/api/proxy/api/monitor/agent/${id}`);
           if (cr.ok) { const d = await cr.json(); if (d.agent) extra.push(d.agent); }
         } catch {}
       }
-
       setAgents([...walletAgents, ...extra]);
     } catch {}
     setLoading(false);
   }, []);
 
-  const fetchRecentLogs = useCallback(async (wallet: string) => {
-    try {
-      const r = await fetch(`/api/proxy/feed/live`);
-      // Just get recent from overview — we'll poll the agent feeds
-    } catch {}
-  }, []);
-
-  // For demo: if no wallet or wallet has no agents, offer demo mode
-  const [showDemo, setShowDemo] = useState(false);
-
-  const fetchDemo = useCallback(async () => {
-    setLoading(true);
-    try {
-      const r = await fetch("/api/proxy/api/monitor/agents");
-      if (r.ok) { const d = await r.json(); setAgents(d.agents || []); }
-      // Fetch recent logs for activity preview
-      const lr = await fetch("/api/proxy/api/monitor/agent/research-bot-demo/feed?limit=5");
-      const lr2 = await fetch("/api/proxy/api/monitor/agent/rogue-bot-demo/feed?limit=5");
-      const lr3 = await fetch("/api/proxy/api/monitor/agent/trading-bot-demo/feed?limit=5");
-      const logs: Log[] = [];
-      if (lr.ok)  { const d = await lr.json();  logs.push(...(d.logs || [])); }
-      if (lr2.ok) { const d = await lr2.json(); logs.push(...(d.logs || [])); }
-      if (lr3.ok) { const d = await lr3.json(); logs.push(...(d.logs || [])); }
-      logs.sort((a, b) => b.timestamp - a.timestamp);
-      setLogs(logs.slice(0, 20));
-    } catch {}
-    setLoading(false);
-  }, []);
-
   useEffect(() => {
-    if (showDemo) { fetchDemo(); return; }
     if (!address) return;
     fetchAgents(address);
     const iv = setInterval(() => fetchAgents(address), 8000);
     return () => clearInterval(iv);
-  }, [address, showDemo, fetchAgents, fetchDemo]);
+  }, [address, fetchAgents]);
 
-  // Also fetch recent logs per agent for status dots
   useEffect(() => {
     if (agents.length === 0) return;
     async function fetchLogs() {
@@ -205,7 +246,6 @@ export default function DashboardPage() {
   }, [agents]);
 
   const highAlertAgent = agents.find(a => a.activeAlerts > 0 && !dismissedAlerts.has(a.id));
-  const snippet = `{\n  "skills": ["https://veridex.sbs/skill.md"]\n}`;
 
   return (
     <>
@@ -225,34 +265,10 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Header */}
-        <div className="dashboard-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "28px", flexWrap: "wrap", gap: "12px" }}>
-          <div>
-            <h1 style={{ fontSize: "24px", fontWeight: 700, marginBottom: "4px" }}>
-              {showDemo ? "Demo Dashboard" : (address ? "Your Agents" : "Dashboard")}
-            </h1>
-            <p style={{ fontSize: "14px", color: "var(--text-tertiary)" }}>
-              {showDemo ? "3 live demo agents — research, trading, and rogue bot" : (address ? `Showing agents for ${shortAddress}` : "Connect your wallet to see your agents")}
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-            {showDemo && (
-              <button onClick={() => { setShowDemo(false); setAgents([]); }} style={{ background: "none", border: "1px solid var(--border)", borderRadius: "6px", padding: "8px 14px", fontSize: "13px", color: "var(--text-tertiary)", cursor: "pointer" }}>
-                Exit demo
-              </button>
-            )}
-            {!showDemo && address && (
-              <Link href="/dashboard/add" style={{ background: "#10b981", border: "none", borderRadius: "6px", padding: "9px 18px", fontSize: "14px", fontWeight: 600, color: "#000", textDecoration: "none" }}>
-                + Add Agent
-              </Link>
-            )}
-          </div>
-        </div>
-
         {/* No wallet */}
-        {!address && !showDemo && (
+        {!address && (
           <div style={{ textAlign: "center", padding: "80px 24px" }}>
-            <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--bg-secondary)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", fontSize: "28px" }}>?</div>
+            <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--bg-secondary)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", fontSize: "28px" }}>⬡</div>
             <h2 style={{ fontSize: "22px", fontWeight: 600, marginBottom: "12px" }}>Connect your wallet</h2>
             <p style={{ fontSize: "15px", color: "var(--text-tertiary)", marginBottom: "28px", maxWidth: "380px", margin: "0 auto 28px" }}>
               Your wallet address identifies your agents. Connect MetaMask to see agents registered to your address.
@@ -261,51 +277,48 @@ export default function DashboardPage() {
               <button onClick={connect} disabled={isConnecting} style={{ background: "#10b981", border: "none", borderRadius: "8px", padding: "11px 28px", fontSize: "14px", fontWeight: 700, color: "#000", cursor: "pointer" }}>
                 {isConnecting ? "Connecting..." : "Connect Wallet"}
               </button>
-              <button onClick={() => setShowDemo(true)} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", padding: "11px 28px", fontSize: "14px", color: "var(--text-secondary)", cursor: "pointer" }}>
-                View demo →
-              </button>
+              <Link href="/dashboard/rogue-bot-demo" style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", padding: "11px 28px", fontSize: "14px", color: "var(--text-secondary)", textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+                See live example →
+              </Link>
             </div>
           </div>
         )}
 
-        {/* Loading skeletons */}
+        {/* Loading */}
         {loading && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "16px" }}>
             {[1,2,3].map(i => <SkeletonCard key={i} />)}
           </div>
         )}
 
-        {/* Empty state (connected, no agents) */}
-        {!loading && !showDemo && address && agents.length === 0 && (
-          <div style={{ textAlign: "center", padding: "60px 24px" }}>
-            <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--bg-secondary)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", fontSize: "28px" }}>○</div>
-            <h2 style={{ fontSize: "20px", fontWeight: 600, marginBottom: "10px" }}>No agents yet</h2>
-            <p style={{ fontSize: "14px", color: "var(--text-tertiary)", marginBottom: "28px" }}>
-              Register your first agent by adding the Veridex skill to your OpenClaw config.
-            </p>
-            <Link href="/dashboard/add" style={{ display: "inline-block", background: "#10b981", border: "none", borderRadius: "8px", padding: "11px 28px", fontSize: "14px", fontWeight: 700, color: "#000", textDecoration: "none", marginBottom: "32px" }}>
-              + Add your first agent
-            </Link>
-            <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "10px", padding: "16px 20px", maxWidth: "480px", margin: "0 auto", textAlign: "left" }}>
-              <div style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "10px" }}>Or add to your OpenClaw config directly:</div>
-              <pre style={{ margin: 0, fontFamily: "monospace", fontSize: "13px", color: "var(--text-secondary)" }}>{snippet}</pre>
+        {/* Connected, no agents — show onboarding */}
+        {!loading && address && agents.length === 0 && (
+          <>
+            <div style={{ marginBottom: "28px" }}>
+              <h1 style={{ fontSize: "24px", fontWeight: 700, marginBottom: "4px" }}>Your Agents</h1>
+              <p style={{ fontSize: "14px", color: "var(--text-tertiary)" }}>Showing agents for {shortAddress}</p>
             </div>
-            <div style={{ marginTop: "28px" }}>
-              <button onClick={() => setShowDemo(true)} style={{ background: "none", border: "none", color: "#10b981", fontSize: "14px", cursor: "pointer", textDecoration: "underline" }}>
-                See what a live dashboard looks like (demo) →
-              </button>
-            </div>
-          </div>
+            <OnboardingTutorial />
+          </>
         )}
 
-        {/* Agent grid */}
-        {!loading && agents.length > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "16px" }}>
-            {agents.map(agent => <AgentCardUI key={agent.id} agent={agent} recentLogs={recentLogs} />)}
-          </div>
+        {/* Connected with agents */}
+        {!loading && address && agents.length > 0 && (
+          <>
+            <div className="dashboard-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "28px", flexWrap: "wrap", gap: "12px" }}>
+              <div>
+                <h1 style={{ fontSize: "24px", fontWeight: 700, marginBottom: "4px" }}>Your Agents</h1>
+                <p style={{ fontSize: "14px", color: "var(--text-tertiary)" }}>Showing agents for {shortAddress}</p>
+              </div>
+              <Link href="/dashboard/add" style={{ background: "#10b981", border: "none", borderRadius: "6px", padding: "9px 18px", fontSize: "14px", fontWeight: 600, color: "#000", textDecoration: "none" }}>
+                + Add Agent
+              </Link>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "16px" }}>
+              {agents.map(agent => <AgentCardUI key={agent.id} agent={agent} recentLogs={recentLogs} />)}
+            </div>
+          </>
         )}
-
-        {/* Coming Soon features removed */}
 
       </div>
       <style>{`
