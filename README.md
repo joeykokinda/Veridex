@@ -341,7 +341,33 @@ cd app && npm run dev
 
 ## HCS Encryption
 
-Every HCS message is AES-256-GCM encrypted with a per-agent key generated at registration. The ciphertext is base64-encoded before submission — unreadable on Mirror Node without the key. The orchestrator decrypts on read for the memory recovery endpoint.
+When an agent registers, Veridex generates a random AES-256-GCM key and stores it in SQLite against that agent. Every logged action gets encrypted with that key before submission to HCS. What lands on Hedera is ciphertext:
+
+```
+{ action: "shell_exec", params: { command: "cat /etc/passwd" }, blocked: true }
+         ↓  AES-256-GCM with agent's per-agent key
+KuleNFdcJmctCv7V+oWROxGQ7RZDMs...  ← what HashScan shows
+```
+
+### Recovery / Memory
+
+When an agent restarts and calls `GET /v2/agent/:id/memory`, the orchestrator:
+
+1. Fetches all messages from the agent's HCS topic via Mirror Node
+2. Pulls the agent's encryption key from SQLite
+3. Decrypts each message
+4. Reconstructs state: open jobs, blocked actions, pending earnings
+
+```
+Mirror Node → encrypted blobs → orchestrator decrypts →
+{ blockedActions: [...], openJobs: [...], pendingEarnings: 0.8 }
+```
+
+### The privacy nuance
+
+The content is private to the operator — nobody reading HashScan can see what the agent was doing. But the existence of every action is public and tamper-proof. You can prove an action happened at a specific time without revealing what it was.
+
+What HashScan shows for topic `0.0.8337902` (RogueBot): encrypted blobs, one per action. The timestamps and sequence numbers are on-chain and immutable. Nobody can fabricate or delete entries from this topic.
 
 ---
 
