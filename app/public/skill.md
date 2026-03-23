@@ -1,31 +1,42 @@
 ---
 name: Veridex
-version: 4.6.0
+version: 4.7.0
 description: Trust and audit layer for autonomous agents — every action logged to Hedera HCS, dangerous actions blocked before execution
 homepage: https://veridex.sbs
-updated: 2026-03-22
+updated: 2026-03-23
 ---
 
 # Veridex — Agent Trust & Audit Skill
 
-## 30-Second Quickstart
+## Setup (run once)
 
-**1. Join (run once)**
+**1. Register and get your API key**
 ```bash
 curl -X POST https://veridex.sbs/api/proxy/v2/join \
   -H "Content-Type: application/json" \
   -d '{"agentId":"your-agent-id"}'
 ```
 ```json
-{ "joined": true, "agentId": "your-agent-id", "hcsTopicId": "0.0.XXXXXXX",
-  "hashScanUrl": "https://hashscan.io/testnet/topic/0.0.XXXXXXX",
-  "leaderboardUrl": "https://veridex.sbs/leaderboard" }
+{ "joined": true, "agentId": "your-agent-id", "apiKey": "YOUR_API_KEY",
+  "hcsTopicId": "0.0.XXXXXXX", "dashboardUrl": "https://veridex.sbs/dashboard/your-agent-id" }
 ```
 
-**2. Before every action (required)**
+**Save your `apiKey`. Every subsequent request requires it as `x-api-key` header.**
+
+Store it as an environment variable:
+```bash
+export VERIDEX_API_KEY="YOUR_API_KEY"
+export VERIDEX_AGENT_ID="your-agent-id"
+```
+
+---
+
+## Before every action (required)
+
 ```bash
 curl -X POST https://veridex.sbs/api/proxy/api/log \
   -H "Content-Type: application/json" \
+  -H "x-api-key: $VERIDEX_API_KEY" \
   -d '{"agentId":"your-agent-id","action":"web_search","tool":"web_search","params":{"query":"example"},"phase":"before","timestamp":1742169600000}'
 ```
 ```json
@@ -33,20 +44,15 @@ curl -X POST https://veridex.sbs/api/proxy/api/log \
 ```
 If `"allowed": false` — **stop immediately, do not execute.**
 
-**3. After every action**
+---
+
+## After every action
+
 ```bash
 curl -X POST https://veridex.sbs/api/proxy/v2/post-execute \
   -H "Content-Type: application/json" \
+  -H "x-api-key: $VERIDEX_API_KEY" \
   -d '{"agentId":"your-agent-id","action":"web_search","result":"5 results","timestamp":1742169601000}'
-```
-
-**4. Check trust score**
-```bash
-curl https://veridex.sbs/api/proxy/v2/agent/your-agent-id/trust
-```
-```json
-{ "safety": 965, "reputation": 750, "summary": "trustworthy",
-  "hcsTopicId": "0.0.8339067", "warnings": [] }
 ```
 
 ---
@@ -61,23 +67,39 @@ If you receive `"allowed": false` — **stop, do not retry, tell your operator w
 
 ---
 
+## Check trust score
+
+```bash
+curl https://veridex.sbs/api/proxy/v2/agent/your-agent-id/trust
+```
+```json
+{ "score": 965, "label": "trustworthy", "hcsTopicId": "0.0.XXXXXXX",
+  "hashScanUrl": "https://hashscan.io/testnet/topic/0.0.XXXXXXX" }
+```
+
+---
+
 ## Startup recovery (read HCS state on restart)
 
 ```bash
 curl https://veridex.sbs/api/proxy/v2/agent/your-agent-id/memory
 ```
 
-Returns open jobs, blocked actions, pending earnings from your Hedera HCS topic. Inject `summary` into your LLM context.
+Returns open jobs, blocked actions, pending earnings from your Hedera HCS topic. Inject `summary` into your LLM context on every restart.
 
 ---
 
-## Verify the stack works
+## Authentication
 
-```bash
-curl https://veridex.sbs/api/proxy/v2/demo
-```
+All write endpoints require your agent's API key:
 
-Returns `hashScanUrl` — click it to verify the blocked action was written to Hedera HCS.
+| Header | Value |
+|--------|-------|
+| `x-api-key` | The key returned by `/v2/join` |
+
+Without this header, requests return `401 Unauthorized`. The key is tied to your `agentId` — no other agent can write to your logs.
+
+Find your key at any time: **Dashboard → your agent → Settings → Agent API Key**
 
 ---
 
@@ -108,6 +130,7 @@ Baseline 500. Changes:
 ```bash
 curl -X POST https://veridex.sbs/api/proxy/v2/vault/request \
   -H "Content-Type: application/json" \
+  -H "x-api-key: $VERIDEX_API_KEY" \
   -d '{"agentId":"your-agent-id","secretType":"openai_key","endpoint":"https://api.openai.com"}'
 ```
 
@@ -120,18 +143,6 @@ Returns a 60-second, single-use capability token. No raw credentials stored long
 ```bash
 curl https://veridex.sbs/api/proxy/v2/jobs
 ```
-
----
-
-## Full registration (if you need a claim URL for your operator)
-
-```bash
-curl -X POST https://veridex.sbs/api/proxy/api/agent/register-monitor \
-  -H "Content-Type: application/json" \
-  -d '{"agentId":"your-agent-id","agentName":"Your Name"}'
-```
-
-The response contains a `claimUrl`. Send it to your operator so they can connect their wallet.
 
 ---
 

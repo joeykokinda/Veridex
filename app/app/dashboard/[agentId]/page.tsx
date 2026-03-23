@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Nav } from "../../components/Nav";
+import { DashboardHeader } from "../../components/DashboardHeader";
+import { useWallet } from "../../lib/wallet";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { use } from "react";
 import { useSearchParams } from "next/navigation";
@@ -18,6 +19,7 @@ interface Agent {
   created_at: number;
   telegram_chat_id?: string;
   visibility?: string;
+  api_key?: string;
 }
 
 interface Stats {
@@ -152,14 +154,65 @@ const JOB_STATUS_COLORS: Record<string, string> = {
   Completed: "#10b981", Cancelled: "#6b7280", Failed: "#ef4444",
 };
 
+function ClaimBanner({ agentId, onClaimed }: { agentId: string; onClaimed: () => void }) {
+  const { address, connect, isConnecting } = useWallet();
+  const [claiming, setClaiming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function claim() {
+    if (!address) { connect(); return; }
+    setClaiming(true);
+    setError(null);
+    try {
+      const winEthereum = (window as unknown as { ethereum?: { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> } }).ethereum;
+      if (!winEthereum) throw new Error("MetaMask not found");
+      const msg = `veridex-claim:${agentId}`;
+      const signature = await winEthereum.request({ method: "personal_sign", params: [msg, address] }) as string;
+      const r = await fetch(`/api/proxy/v2/agent/${encodeURIComponent(agentId)}/claim`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: address, signature }),
+      });
+      const d = await r.json();
+      if (d.claimed) { onClaimed(); }
+      else setError(d.error || "Claim failed");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Claim failed");
+    }
+    setClaiming(false);
+  }
+
+  return (
+    <div style={{ background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: "8px", padding: "14px 18px", marginBottom: "20px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
+      <div>
+        <div style={{ fontSize: "13px", fontWeight: 600, color: "#10b981", marginBottom: "2px" }}>This agent is unclaimed</div>
+        <div style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
+          {address ? "Connect your wallet and sign to become the operator. You'll be able to set policies, view earnings, and use the kill-switch." : "Connect your wallet to claim ownership of this agent and manage it."}
+        </div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+        <button
+          onClick={claim}
+          disabled={claiming || isConnecting}
+          style={{ background: "#10b981", border: "none", borderRadius: "6px", padding: "8px 20px", fontSize: "13px", fontWeight: 700, color: "#000", cursor: "pointer", opacity: (claiming || isConnecting) ? 0.6 : 1, whiteSpace: "nowrap" as const }}
+        >
+          {claiming ? "Signing..." : isConnecting ? "Connecting..." : address ? "Claim this agent" : "Connect wallet to claim"}
+        </button>
+        {error && <div style={{ fontSize: "11px", color: "#ef4444" }}>{error}</div>}
+      </div>
+    </div>
+  );
+}
+
 function scoreColor(value: number, threshHigh: number, threshMid: number) {
   return value >= threshHigh ? "#10b981" : value >= threshMid ? "#d4890a" : "#ef4444";
 }
 
-function ConnectAgentGuide({ agentId }: { agentId: string }) {
+function ConnectAgentGuide({ agentId, apiKey }: { agentId: string; apiKey?: string }) {
   const skillUrl = "https://veridex.sbs/skill.md";
   const [copiedSkill, setCopiedSkill] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(false);
 
   function copy(text: string, setCopied: (v: boolean) => void) {
     navigator.clipboard.writeText(text).then(() => {
@@ -172,29 +225,29 @@ function ConnectAgentGuide({ agentId }: { agentId: string }) {
     <div style={{ padding: "8px 0 40px" }}>
       {/* Heading */}
       <div style={{ marginBottom: "28px" }}>
-        <div style={{ fontSize: "15px", fontWeight: 600, marginBottom: "6px" }}>Connect your agent in 2 steps</div>
+        <div style={{ fontSize: "15px", fontWeight: 600, marginBottom: "6px" }}>Connect your agent in 3 steps</div>
         <div style={{ fontSize: "13px", color: "var(--text-tertiary)", lineHeight: 1.6 }}>
-          Your agent is registered. Now point it at Veridex so every action gets checked and logged here automatically.
+          Your agent is registered. These three things are all it needs to start logging verified actions to Hedera HCS.
         </div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "14px", maxWidth: "620px" }}>
-        {/* Step 1 */}
+        {/* Step 1 — Skill URL */}
         <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "10px", padding: "18px 20px" }}>
           <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
             <span style={{ fontSize: "11px", fontFamily: "monospace", color: "#10b981", fontWeight: 700, marginTop: "2px", flexShrink: 0 }}>01</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "14px", fontWeight: 600, marginBottom: "6px" }}>Add the Veridex skill to your agent</div>
+              <div style={{ fontSize: "14px", fontWeight: 600, marginBottom: "6px" }}>Add the Veridex skill</div>
               <div style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "12px", lineHeight: 1.6 }}>
-                In your OpenClaw (or any MCP-compatible agent) config, add the skill URL:
+                In your OpenClaw (or any MCP-compatible agent) config, add the skill URL. This teaches your agent every available endpoint.
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", background: "var(--bg-tertiary)", borderRadius: "6px", padding: "10px 14px" }}>
-                <code style={{ flex: 1, fontSize: "12px", fontFamily: "monospace", color: "#10b981", wordBreak: "break-all" }}>
+                <code style={{ flex: 1, fontSize: "12px", fontFamily: "monospace", color: "#10b981", wordBreak: "break-all" as const }}>
                   {`{ "skills": ["${skillUrl}"] }`}
                 </code>
                 <button
                   onClick={() => copy(`{ "skills": ["${skillUrl}"] }`, setCopiedSkill)}
-                  style={{ background: "none", border: "1px solid var(--border)", borderRadius: "4px", padding: "3px 10px", fontSize: "11px", color: copiedSkill ? "#10b981" : "var(--text-tertiary)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
+                  style={{ background: "none", border: "1px solid var(--border)", borderRadius: "4px", padding: "3px 10px", fontSize: "11px", color: copiedSkill ? "#10b981" : "var(--text-tertiary)", cursor: "pointer", whiteSpace: "nowrap" as const, flexShrink: 0 }}
                 >
                   {copiedSkill ? "copied ✓" : "copy"}
                 </button>
@@ -203,22 +256,52 @@ function ConnectAgentGuide({ agentId }: { agentId: string }) {
           </div>
         </div>
 
-        {/* Step 2 */}
-        <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "10px", padding: "18px 20px" }}>
+        {/* Step 2 — API Key */}
+        <div style={{ background: "var(--bg-secondary)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: "10px", padding: "18px 20px" }}>
           <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
             <span style={{ fontSize: "11px", fontFamily: "monospace", color: "#10b981", fontWeight: 700, marginTop: "2px", flexShrink: 0 }}>02</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "14px", fontWeight: 600, marginBottom: "6px" }}>Use your agent ID when logging</div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                <div style={{ fontSize: "14px", fontWeight: 600 }}>Set your API key</div>
+                <span style={{ fontSize: "10px", fontWeight: 700, background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)", borderRadius: "4px", padding: "1px 5px" }}>REQUIRED</span>
+              </div>
               <div style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "12px", lineHeight: 1.6 }}>
-                Veridex automatically reads the agent ID from the skill. Your agent&apos;s ID is:
+                This key proves your agent&apos;s logs belong to you. Every <code style={{ fontSize: "11px", background: "rgba(255,255,255,0.07)", padding: "1px 4px", borderRadius: "3px" }}>/api/log</code> call must include it as the <code style={{ fontSize: "11px", background: "rgba(255,255,255,0.07)", padding: "1px 4px", borderRadius: "3px" }}>x-api-key</code> header — without it, requests are rejected. Store it as an environment variable in your agent.
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", background: "var(--bg-tertiary)", borderRadius: "6px", padding: "10px 14px" }}>
-                <code style={{ flex: 1, fontSize: "12px", fontFamily: "monospace", color: "rgba(255,255,255,0.7)", wordBreak: "break-all" }}>
+                <code style={{ flex: 1, fontSize: "11px", fontFamily: "monospace", color: "rgba(255,255,255,0.85)", wordBreak: "break-all" as const, letterSpacing: "0.3px" }}>
+                  {apiKey || "Loading..."}
+                </code>
+                <button
+                  onClick={() => { if (apiKey) { navigator.clipboard.writeText(apiKey); setCopiedKey(true); setTimeout(() => setCopiedKey(false), 2000); } }}
+                  style={{ background: "none", border: "1px solid var(--border)", borderRadius: "4px", padding: "3px 10px", fontSize: "11px", color: copiedKey ? "#10b981" : "var(--text-tertiary)", cursor: "pointer", whiteSpace: "nowrap" as const, flexShrink: 0 }}
+                >
+                  {copiedKey ? "copied ✓" : "copy"}
+                </button>
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "10px" }}>
+                Example: <code style={{ fontSize: "10px", background: "rgba(255,255,255,0.05)", padding: "2px 6px", borderRadius: "3px" }}>export VERIDEX_API_KEY=&quot;{apiKey?.slice(0,8) || "..."}...&quot;</code>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Step 3 — Agent ID */}
+        <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "10px", padding: "18px 20px" }}>
+          <div style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+            <span style={{ fontSize: "11px", fontFamily: "monospace", color: "#10b981", fontWeight: 700, marginTop: "2px", flexShrink: 0 }}>03</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: "14px", fontWeight: 600, marginBottom: "6px" }}>Use your agent ID in every log call</div>
+              <div style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "12px", lineHeight: 1.6 }}>
+                Pass this as <code style={{ fontSize: "11px", background: "rgba(255,255,255,0.07)", padding: "1px 4px", borderRadius: "3px" }}>agentId</code> in every request body. This is the public identifier that shows up on your dashboard and the leaderboard.
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", background: "var(--bg-tertiary)", borderRadius: "6px", padding: "10px 14px" }}>
+                <code style={{ flex: 1, fontSize: "12px", fontFamily: "monospace", color: "rgba(255,255,255,0.7)", wordBreak: "break-all" as const }}>
                   {agentId}
                 </code>
                 <button
                   onClick={() => copy(agentId, setCopiedId)}
-                  style={{ background: "none", border: "1px solid var(--border)", borderRadius: "4px", padding: "3px 10px", fontSize: "11px", color: copiedId ? "#10b981" : "var(--text-tertiary)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}
+                  style={{ background: "none", border: "1px solid var(--border)", borderRadius: "4px", padding: "3px 10px", fontSize: "11px", color: copiedId ? "#10b981" : "var(--text-tertiary)", cursor: "pointer", whiteSpace: "nowrap" as const, flexShrink: 0 }}
                 >
                   {copiedId ? "copied ✓" : "copy"}
                 </button>
@@ -394,6 +477,7 @@ type Tab = "activity" | "jobs" | "earnings" | "policies" | "recovery" | "setting
 export default function AgentDetailPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params);
   const decodedId = decodeURIComponent(agentId);
+  const { address } = useWallet();
 
   const [tab, setTab] = useState<Tab>("activity");
   const [agent, setAgent] = useState<Agent | null>(null);
@@ -438,6 +522,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
   // Settings tab
   const [newName, setNewName] = useState("");
+  const [copiedKey, setCopiedKey] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -901,7 +986,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   if (loading) {
     return (
       <>
-        <Nav />
+        <DashboardHeader />
         <div style={{ maxWidth: "1100px", margin: "60px auto", padding: "0 24px", textAlign: "center", color: "var(--text-tertiary)" }}>
           Loading agent...
         </div>
@@ -912,7 +997,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   if (!agent) {
     return (
       <>
-        <Nav />
+        <DashboardHeader />
         <div style={{ maxWidth: "1100px", margin: "60px auto", padding: "0 24px", textAlign: "center" }}>
           <div style={{ color: "var(--text-tertiary)", marginBottom: "16px" }}>Agent not found.</div>
           <Link href="/dashboard" style={{ color: "var(--accent)", fontSize: "14px" }}>← Back to Dashboard</Link>
@@ -921,9 +1006,47 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     );
   }
 
+  // ─── Wallet ownership state ───────────────────────────────────────────────
+  const ownerWallet = agent.owner_wallet?.toLowerCase();
+  const connectedWallet = address?.toLowerCase();
+  const isOwner = !!ownerWallet && ownerWallet === connectedWallet;
+  const isClaimed = !!ownerWallet;
+  // Claimed by someone else → show public-only view (trust score + HCS link, no controls)
+  if (isClaimed && !isOwner) {
+    return (
+      <>
+        <DashboardHeader />
+        <div style={{ maxWidth: "600px", margin: "120px auto", padding: "0 24px", textAlign: "center" }}>
+          <div style={{ fontSize: "18px", fontWeight: 700, marginBottom: "8px" }}>{agent.name || agent.id}</div>
+          <div style={{ fontSize: "13px", fontFamily: "monospace", color: "var(--text-tertiary)", marginBottom: "20px" }}>{agent.id}</div>
+          <div style={{ display: "flex", gap: "12px", justifyContent: "center", marginBottom: "24px" }}>
+            <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "14px 20px", textAlign: "center" }}>
+              <div style={{ fontSize: "20px", fontWeight: 700, fontFamily: "monospace" }}>{stats?.safetyScore ?? "—"}</div>
+              <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "4px" }}>safety score</div>
+            </div>
+            <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "14px 20px", textAlign: "center" }}>
+              <div style={{ fontSize: "20px", fontWeight: 700, fontFamily: "monospace" }}>{stats?.totalActions ?? "—"}</div>
+              <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "4px" }}>total actions</div>
+            </div>
+            {agent.hcs_topic_id && (
+              <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "14px 20px", textAlign: "center" }}>
+                <a href={`https://hashscan.io/testnet/topic/${agent.hcs_topic_id}`} target="_blank" rel="noopener" style={{ fontSize: "12px", fontFamily: "monospace", color: "#10b981", textDecoration: "none" }}>{agent.hcs_topic_id} ↗</a>
+                <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "4px" }}>HCS audit trail</div>
+              </div>
+            )}
+          </div>
+          <div style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "8px" }}>
+            Managed by <span style={{ fontFamily: "monospace" }}>{agent.owner_wallet?.slice(0, 6)}...{agent.owner_wallet?.slice(-4)}</span>
+          </div>
+          <Link href="/dashboard" style={{ color: "var(--accent)", fontSize: "13px" }}>← Back to Dashboard</Link>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
-      <Nav />
+      <DashboardHeader />
       <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "72px 24px 32px" }}>
 
         {/* Breadcrumb */}
@@ -932,6 +1055,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
           <span style={{ margin: "0 8px" }}>›</span>
           <span style={{ color: "var(--text-primary)" }}>{agent.name || agent.id}</span>
         </div>
+
+        {/* Unclaimed banner — agent is running but no operator has claimed it yet */}
+        {!isClaimed && (
+          <ClaimBanner agentId={decodedId} onClaimed={() => window.location.reload()} />
+        )}
 
         {/* RogueBot warning banner */}
         {decodedId === "rogue-bot-demo" && (
@@ -1069,7 +1197,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
             {filteredLogs.length === 0 ? (
               allLogs.length === 0 ? (
-                <ConnectAgentGuide agentId={decodedId} />
+                <ConnectAgentGuide agentId={decodedId} apiKey={agent?.api_key} />
               ) : (
                 <div style={{ textAlign: "center", padding: "60px", color: "var(--text-tertiary)", fontSize: "14px" }}>
                   No entries match this filter.
@@ -1591,6 +1719,41 @@ const memory = await r.json();
         {/* ── Settings ───────────────────────────────────────────────────────── */}
         {tab === "settings" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+
+            {/* API Key */}
+            <div style={{ background: "var(--bg-secondary)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: "8px", padding: "20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                <div style={{ fontSize: "14px", fontWeight: 600 }}>Agent API Key</div>
+                <span style={{ fontSize: "10px", fontWeight: 700, background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)", borderRadius: "4px", padding: "2px 6px" }}>REQUIRED</span>
+              </div>
+              <div style={{ fontSize: "12px", color: "var(--text-tertiary)", marginBottom: "14px", lineHeight: 1.6 }}>
+                Every <code style={{ fontSize: "11px", background: "rgba(255,255,255,0.07)", padding: "1px 5px", borderRadius: "3px" }}>/api/log</code> call must include this as the <code style={{ fontSize: "11px", background: "rgba(255,255,255,0.07)", padding: "1px 5px", borderRadius: "3px" }}>x-api-key</code> header. Without it, your agent&apos;s requests will be rejected — this is what proves the logs belong to you.
+              </div>
+              {agent.api_key ? (
+                <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                  <code style={{ flex: 1, fontSize: "12px", fontFamily: "monospace", background: "var(--bg-tertiary)", border: "1px solid var(--border)", borderRadius: "6px", padding: "9px 12px", color: "var(--text-primary)", letterSpacing: "0.5px", wordBreak: "break-all" as const }}>
+                    {agent.api_key}
+                  </code>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(agent.api_key!); setCopiedKey(true); setTimeout(() => setCopiedKey(false), 2000); }}
+                    style={{ padding: "8px 14px", background: copiedKey ? "rgba(16,185,129,0.15)" : "transparent", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", color: copiedKey ? "#10b981" : "var(--text-secondary)", cursor: "pointer", whiteSpace: "nowrap" as const, transition: "all 0.15s" }}
+                  >
+                    {copiedKey ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              ) : (
+                <div style={{ fontSize: "13px", color: "#f59e0b" }}>
+                  No API key found. Re-register this agent via <code style={{ fontSize: "11px" }}>POST /v2/join</code> to generate one.
+                </div>
+              )}
+              <div style={{ marginTop: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px", padding: "12px" }}>
+                <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginBottom: "8px", fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.5px" }}>Usage</div>
+                <pre style={{ fontSize: "11px", fontFamily: "monospace", color: "var(--text-secondary)", margin: 0, whiteSpace: "pre-wrap" as const, lineHeight: 1.6 }}>{`curl -X POST https://veridex.sbs/api/proxy/api/log \\
+  -H "Content-Type: application/json" \\
+  -H "x-api-key: ${agent.api_key || "YOUR_API_KEY"}" \\
+  -d '{"agentId":"${decodedId}","action":"web_search","tool":"web_search","params":{"query":"example"},"phase":"before"}'`}</pre>
+              </div>
+            </div>
 
             {/* Rename */}
             <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "20px" }}>

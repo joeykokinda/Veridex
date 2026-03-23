@@ -404,17 +404,24 @@ export default function DashboardPage() {
         {!address && (
           <div style={{ textAlign: "center", padding: "80px 24px" }}>
             <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--bg-secondary)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", fontSize: "28px" }}>⬡</div>
-            <h2 style={{ fontSize: "22px", fontWeight: 600, marginBottom: "12px" }}>Connect your wallet</h2>
-            <p style={{ fontSize: "15px", color: "var(--text-tertiary)", marginBottom: "28px", maxWidth: "380px", margin: "0 auto 28px" }}>
-              Your wallet address identifies your agents. Connect MetaMask to see agents registered to your address.
+            <h2 style={{ fontSize: "22px", fontWeight: 600, marginBottom: "12px" }}>Connect wallet to manage agents</h2>
+            <p style={{ fontSize: "15px", color: "var(--text-tertiary)", marginBottom: "8px", maxWidth: "420px", margin: "0 auto 8px" }}>
+              Your agent is already running and logging to Hedera HCS. Connect your wallet to claim ownership and take control.
             </p>
-            <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+            <p style={{ fontSize: "13px", color: "var(--text-tertiary)", marginBottom: "28px", maxWidth: "380px", margin: "0 auto 28px" }}>
+              Agents don&apos;t need a wallet — only the human operator does.
+            </p>
+            <div style={{ display: "flex", gap: "12px", justifyContent: "center", marginBottom: "32px" }}>
               <button onClick={connect} disabled={isConnecting} style={{ background: "#10b981", border: "none", borderRadius: "8px", padding: "11px 28px", fontSize: "14px", fontWeight: 700, color: "#000", cursor: "pointer" }}>
                 {isConnecting ? "Connecting..." : "Connect Wallet"}
               </button>
               <Link href="/dashboard/rogue-bot-demo" style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: "8px", padding: "11px 28px", fontSize: "14px", color: "var(--text-secondary)", textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
                 See live example →
               </Link>
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--text-tertiary)", maxWidth: "360px", margin: "0 auto", background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "8px", padding: "12px 16px", textAlign: "left", lineHeight: 1.7 }}>
+              <strong style={{ color: "var(--text-secondary)" }}>Already have an agent running?</strong><br/>
+              Go to <code style={{ fontSize: "11px", background: "rgba(255,255,255,0.06)", padding: "1px 5px", borderRadius: "3px" }}>veridex.sbs/dashboard/your-agent-id</code> — connect your wallet there and claim it in one click.
             </div>
           </div>
         )}

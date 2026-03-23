@@ -311,23 +311,23 @@ app.post("/api/log", async (req, res) => {
     return res.status(400).json({ error: "agentId required" });
   }
 
-  // Ensure agent exists in DB (auto-create if unknown, get policies)
+  // ── Auth: agents must be registered and authenticated ─────────────────────
   let agentRecord = db.getAgent(agentId);
   if (!agentRecord) {
-    db.upsertAgent({ id: agentId, name: agentId });
-    // Auto-provision HCS topic so this agent's logs are on-chain from the start
-    try {
-      const topicResult = await createAgentTopic(agentId, agentId);
-      const hcsTopicId = topicResult?.topicId || null;
-      if (hcsTopicId) {
-        db.upsertAgent({ id: agentId, hcsTopicId });
-        const encKey = randomBytes(32).toString("hex");
-        db.getDb().prepare("UPDATE agents SET hcs_encryption_key = ? WHERE id = ?").run(encKey, agentId);
-      }
-    } catch (e) {
-      console.error(`[auto-HCS] Failed to create topic for ${agentId}:`, e.message);
+    return res.status(401).json({
+      error: "Agent not registered. Call POST /v2/join first to get your API key.",
+      hint: "curl -X POST https://veridex.sbs/api/proxy/v2/join -H 'Content-Type: application/json' -d '{\"agentId\":\"" + agentId + "\"}'"
+    });
+  }
+  // If this agent has an api_key, the caller must supply it
+  if (agentRecord.api_key) {
+    const supplied = req.headers["x-api-key"] || req.body.apiKey;
+    if (!supplied || supplied !== agentRecord.api_key) {
+      return res.status(401).json({
+        error: "Invalid or missing API key. Include your key as the x-api-key header.",
+        hint: "You received your API key when you called POST /v2/join. Find it in your agent dashboard under Settings."
+      });
     }
-    agentRecord = db.getAgent(agentId);
   }
 
   const policies = db.getAgentPolicies(agentId);
@@ -1134,8 +1134,16 @@ app.post("/v2/post-execute", async (req, res) => {
 
   let agentRecord = db.getAgent(agentId);
   if (!agentRecord) {
-    db.upsertAgent({ id: agentId, name: agentId });
-    agentRecord = db.getAgent(agentId);
+    return res.status(401).json({
+      error: "Agent not registered. Call POST /v2/join first.",
+      hint: "curl -X POST https://veridex.sbs/api/proxy/v2/join -H 'Content-Type: application/json' -d '{\"agentId\":\"" + agentId + "\"}'"
+    });
+  }
+  if (agentRecord.api_key) {
+    const supplied = req.headers["x-api-key"] || req.body.apiKey;
+    if (!supplied || supplied !== agentRecord.api_key) {
+      return res.status(401).json({ error: "Invalid or missing API key. Include x-api-key header." });
+    }
   }
 
   // ── Unlogged execution detection ──────────────────────────────────────────
@@ -1378,6 +1386,59 @@ app.get("/v2/agent/:agentId/trust", async (req, res) => {
 
   trustCache.set(agentId, { result, cachedAt: Date.now() });
   res.json(result);
+});
+
+/**
+ * POST /v2/agent/:agentId/claim
+ * Operator claims ownership of an agent by signing a message with their wallet.
+ * This is the only way to associate a wallet with an agent — no private key required on the agent side.
+ *
+ * Body: { wallet, signature }
+ * The signature must be: signMessage("veridex-claim:" + agentId) from `wallet`
+ */
+app.post("/v2/agent/:agentId/claim", (req, res) => {
+  const { agentId } = req.params;
+  const { wallet, signature } = req.body;
+
+  if (!wallet || !signature) {
+    return res.status(400).json({ error: "wallet and signature required" });
+  }
+
+  const agent = db.getAgent(agentId);
+  if (!agent) {
+    return res.status(404).json({ error: "Agent not found. Register it first via POST /v2/join." });
+  }
+
+  // Verify the signature — recover signer from "veridex-claim:<agentId>"
+  let recovered;
+  try {
+    recovered = ethers.verifyMessage(`veridex-claim:${agentId}`, signature);
+  } catch (e) {
+    return res.status(400).json({ error: "Invalid signature" });
+  }
+
+  if (recovered.toLowerCase() !== wallet.toLowerCase()) {
+    return res.status(403).json({ error: "Signature does not match the supplied wallet address" });
+  }
+
+  // If already claimed by a different wallet, reject
+  if (agent.owner_wallet && agent.owner_wallet.toLowerCase() !== wallet.toLowerCase()) {
+    return res.status(409).json({
+      error: "This agent is already claimed by a different wallet",
+      owner: agent.owner_wallet.slice(0, 6) + "..." + agent.owner_wallet.slice(-4)
+    });
+  }
+
+  // Link wallet to agent
+  db.getDb().prepare("UPDATE agents SET owner_wallet = ? WHERE id = ?").run(wallet, agentId);
+
+  res.json({
+    claimed: true,
+    agentId,
+    wallet,
+    dashboardUrl: `https://veridex.sbs/dashboard/${agentId}`,
+    message: `Wallet ${wallet.slice(0, 6)}...${wallet.slice(-4)} is now the operator of agent "${agentId}"`
+  });
 });
 
 // ── Layer 8: Verifiable Operational History (Tamper-Proof Agent Memory) ───────
