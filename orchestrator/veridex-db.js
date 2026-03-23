@@ -196,7 +196,7 @@ function getAgent(id) {
 }
 
 function getAgentsByOwner(ownerWallet) {
-  return getDb().prepare("SELECT * FROM agents WHERE owner_wallet = ? ORDER BY created_at DESC").all(ownerWallet);
+  return getDb().prepare("SELECT * FROM agents WHERE LOWER(owner_wallet) = LOWER(?) ORDER BY created_at DESC").all(ownerWallet);
 }
 
 function getAllAgents() {
@@ -252,7 +252,7 @@ function getRecentLogs({ ownerWallet, agentId, limit = 20 } = {}) {
     return d.prepare(`
       SELECT l.* FROM logs l
       JOIN agents a ON l.agent_id = a.id
-      WHERE a.owner_wallet = ?
+      WHERE LOWER(a.owner_wallet) = LOWER(?)
       ORDER BY l.timestamp DESC LIMIT ?
     `).all(ownerWallet, limit).map(parseLog);
   }
