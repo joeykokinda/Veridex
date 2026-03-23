@@ -444,6 +444,11 @@ export default function DashboardPage() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "16px" }}>
               {agents.map(agent => <AgentCardUI key={agent.id} agent={agent} recentLogs={recentLogs} onDelete={handleDeleteAgent} />)}
             </div>
+            <div style={{ marginTop: "24px", textAlign: "center" }}>
+              <Link href="/dashboard/rogue-bot-demo?tour=1" style={{ fontSize: "13px", color: "var(--text-tertiary)", textDecoration: "none" }}>
+                Want to see a live example? View RogueBot demo →
+              </Link>
+            </div>
           </>
         )}
 
