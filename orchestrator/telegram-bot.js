@@ -28,6 +28,27 @@ const API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 let offset = 0;
 let running = false;
 
+// Dedup processed update_ids via SQLite — prevents double-response when Railway
+// runs two instances simultaneously during rolling deploys (~30s overlap).
+// Both processes share the same /data/veridex.db volume, so this is a real lock.
+function claimUpdate(updateId) {
+  try {
+    const d = db.getDb();
+    // Ensure table exists
+    d.exec(`CREATE TABLE IF NOT EXISTS tg_processed_updates (
+      update_id INTEGER PRIMARY KEY,
+      processed_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    )`);
+    // Prune old entries (older than 1 hour) to keep the table small
+    d.prepare("DELETE FROM tg_processed_updates WHERE processed_at < ?").run(Date.now() - 3600000);
+    // Try to insert — fails silently if already exists (another instance got there first)
+    const result = d.prepare("INSERT OR IGNORE INTO tg_processed_updates (update_id) VALUES (?)").run(updateId);
+    return result.changes === 1; // true = we claimed it, false = already processed
+  } catch {
+    return true; // if DB unavailable, allow processing (better than silent failure)
+  }
+}
+
 // ─── Telegram API helpers ────────────────────────────────────────────────────
 
 async function tgPost(method, body, timeoutMs = 10000) {
@@ -334,7 +355,9 @@ async function poll() {
 
     for (const update of result.result) {
       offset = update.update_id + 1;
-      if (update.message) await handleMessage(update.message);
+      if (update.message && claimUpdate(update.update_id)) {
+        await handleMessage(update.message);
+      }
     }
   } catch (e) {
     if (e.name !== "AbortError") console.warn("[TelegramBot] Poll error:", e.message);
