@@ -123,7 +123,7 @@ const DASHBOARD_TOUR_STEPS: TourStep[] = [
     targetId: "view-agent-btn",
     title: "Click in to explore",
     body: "Open an agent to see its real-time activity feed, blocked threats, operator policies, and ERC-7715 delegations.",
-    position: "top",
+    position: "bottom",
     action: { label: "Open RogueBot →", href: "/dashboard/rogue-bot-demo?tour=1" },
     nextLabel: "Skip",
   },

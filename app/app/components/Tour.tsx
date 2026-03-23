@@ -80,7 +80,11 @@ export function TourBubble({ steps, step, next, skip }: {
     const gap = 14;
 
     let top = 0, left = 0, arrowDir = "top";
-    const dir = s.position || "bottom";
+    let dir = s.position || "bottom";
+
+    // Auto-flip: if "top" doesn't have room, use "bottom" and vice versa
+    if (dir === "top" && rect.top - bubbleH - gap < 80) dir = "bottom";
+    else if (dir === "bottom" && rect.bottom + bubbleH + gap > window.innerHeight - 20) dir = "top";
 
     if (dir === "bottom") {
       top = rect.bottom + gap;
@@ -102,7 +106,7 @@ export function TourBubble({ steps, step, next, skip }: {
 
     // clamp to viewport
     left = Math.max(12, Math.min(left, window.innerWidth - bubbleW - 12));
-    top = Math.max(12, Math.min(top, window.innerHeight - bubbleH - 12));
+    top = Math.max(80, Math.min(top, window.innerHeight - bubbleH - 12));
 
     setPos({ top, left, arrowDir });
 
