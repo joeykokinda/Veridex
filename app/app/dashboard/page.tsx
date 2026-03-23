@@ -67,7 +67,7 @@ function AgentCardUI({ agent, recentLogs }: { agent: AgentCard; recentLogs: Log[
       <div style={{ fontSize: "13px", color: lastLog?.riskLevel === "blocked" ? "#fca5a5" : "var(--text-secondary)", background: "var(--bg-tertiary)", borderRadius: "6px", padding: "10px 12px", minHeight: "40px" }}>
         {lastLog ? (
           <>
-            {lastLog.riskLevel === "blocked" && <span style={{ color: "#ef4444" }}>⛔ </span>}
+            {lastLog.riskLevel === "blocked" && <span style={{ color: "#c0392b", fontSize: "11px", fontWeight: 600, marginRight: "4px" }}>blocked:</span>}
             {lastLog.description || lastLog.action}
             <span style={{ color: "var(--text-tertiary)", fontSize: "11px", marginLeft: "8px" }}>{timeAgo(lastLog.timestamp)}</span>
           </>
@@ -80,7 +80,7 @@ function AgentCardUI({ agent, recentLogs }: { agent: AgentCard; recentLogs: Log[
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
         {[
           { label: "actions today", value: agent.stats.actionsToday, color: "var(--text-secondary)" },
-          { label: "blocked", value: agent.stats.blockedActions, color: agent.stats.blockedActions > 0 ? "#ef4444" : "var(--text-tertiary)" },
+          { label: "blocked", value: agent.stats.blockedActions, color: agent.stats.blockedActions > 0 ? "#c0392b" : "var(--text-tertiary)" },
           { label: "alerts", value: agent.activeAlerts, color: agent.activeAlerts > 0 ? "#f59e0b" : "var(--text-tertiary)" },
           { label: "ℏ earned", value: agent.stats.totalEarned.toFixed(2), color: agent.stats.totalEarned > 0 ? "#f59e0b" : "var(--text-tertiary)" },
         ].map(s => (

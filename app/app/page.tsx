@@ -376,12 +376,12 @@ function TelegramDemo() {
       <div style={{ fontFamily:"monospace", fontSize:"13px", lineHeight:2 }}>
         {ph>=1&&(
           <div className="la" style={{ background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.2)", borderRadius:"6px", padding:"6px 10px", marginBottom:"8px" }}>
-            <div style={{ color:"#ef4444", fontWeight:700 }}>⛔ Veridex Alert</div>
+            <div style={{ color:"#c0392b", fontWeight:700 }}>Veridex Alert</div>
             <div style={{ color:"var(--text-tertiary)" }}>rogue-bot: shell_exec blocked</div>
           </div>
         )}
         {ph>=2&&<div className="la" style={{ color:"#10b981" }}>&gt; /block rogue-bot</div>}
-        {ph>=3&&<div className="la" style={{ color:"#10b981" }}>✓ quarantined</div>}
+        {ph>=3&&<div className="la" style={{ color:"#10b981" }}>quarantined</div>}
       </div>
     </div>
   );
@@ -591,7 +591,7 @@ function CantVerifyCol() {
   const items = ["Whether the action matched what was intended","Whether dangerous behavior was actually stopped","Whether funds were split correctly","Whether a crash corrupted state","Whether the audit trail is real or fabricated"];
   return (
     <div ref={ref} style={{ padding:"24px 26px", background:"rgba(239,68,68,0.03)" }}>
-      <div style={{ fontSize:"11px", fontFamily:"monospace", color:"#ef4444", marginBottom:"18px", textTransform:"uppercase" as const, letterSpacing:"0.8px" }}>With no trust layer, you can't prove</div>
+      <div style={{ fontSize:"11px", fontFamily:"monospace", color:"#c0392b", marginBottom:"18px", textTransform:"uppercase" as const, letterSpacing:"0.8px" }}>With no trust layer, you can't prove</div>
       {items.map((item,i)=>(
         <div key={item} className={v?"reveal-item":"reveal-item-hidden"} style={{ display:"flex", gap:"10px", alignItems:"flex-start", marginBottom:"10px", animationDelay:`${(i+5)*90}ms` }}>
           <span style={{ color:"#ef4444", fontSize:"13px", flexShrink:0, marginTop:"2px" }}>✕</span>
@@ -612,7 +612,7 @@ export default function LandingPage() {
   const [demoResult, setDemoResult] = useState<DemoResult|null>(null);
   const [demoLoading, setDemoLoading] = useState(false);
   const [capExpanded, setCapExpanded] = useState(false);
-  const [heroTab, setHeroTab] = useState<"agents"|"operators">("agents");
+  const [heroTab, setHeroTab] = useState<"agents"|"operators">("operators");
 
   useEffect(()=>{
     const load = async () => {
@@ -659,7 +659,7 @@ export default function LandingPage() {
       <main>
 
         {/* ── HERO ─────────────────────────────────────────────────────────── */}
-        <section style={{ minHeight:"100vh", display:"flex", alignItems:"center", padding:"72px 24px 48px" }}>
+        <section id="home" style={{ minHeight:"100vh", display:"flex", alignItems:"center", padding:"72px 24px 48px" }}>
           <div className="hero-split" style={{ maxWidth:"1000px", width:"100%", margin:"0 auto", display:"grid", gridTemplateColumns:"1fr 1fr", gap:"48px", alignItems:"center" }}>
 
             {/* Left: headline + CTAs */}
@@ -698,7 +698,7 @@ export default function LandingPage() {
 
               {demoResult && (
                 <div style={{ marginTop:"16px", background:"rgba(16,185,129,0.05)", border:"1px solid rgba(16,185,129,0.2)", borderRadius:"8px", padding:"12px 14px", fontFamily:"monospace", fontSize:"12px", lineHeight:1.9 }}>
-                  <div style={{ color:"#ef4444", fontWeight:700, marginBottom:"4px" }}>⛔ blocked — written to Hedera HCS</div>
+                  <div style={{ color:"#c0392b", fontWeight:700, marginBottom:"4px" }}>blocked — written to Hedera HCS</div>
                   <div><span style={{ color:"var(--text-tertiary)" }}>reason: </span><span style={{ color:"#fca5a5" }}>{demoResult.reason}</span></div>
                   {demoResult.hcsSequenceNumber && <div><span style={{ color:"var(--text-tertiary)" }}>hcsSeq: </span><span style={{ color:"var(--text-secondary)" }}>#{demoResult.hcsSequenceNumber}</span></div>}
                   {(demoResult.hashScanUrl || demoResult.hcsTopicId) && (
@@ -893,7 +893,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── HOW IT WORKS ─────────────────────────────────────────────────── */}
-        <section style={{ borderTop:"1px solid var(--border)", padding:"80px 24px", background:"rgba(0,0,0,0.3)" }}>
+        <section id="how-it-works" style={{ borderTop:"1px solid var(--border)", padding:"80px 24px", background:"rgba(0,0,0,0.3)" }}>
           <div style={{ maxWidth:"960px", margin:"0 auto" }}>
             <p style={{ fontSize:"11px", fontFamily:"monospace", color:"var(--text-tertiary)", marginBottom:"14px", textTransform:"uppercase" as const, letterSpacing:"1px", textAlign:"center" }}>How it works</p>
             <h2 style={{ fontSize:"clamp(20px,3.5vw,30px)", fontWeight:700, marginBottom:"56px", lineHeight:1.2, textAlign:"center" }}>Every agent action runs through Veridex.</h2>
@@ -922,12 +922,12 @@ export default function LandingPage() {
               </div>
 
               {/* Step 02 */}
-              <div style={{ background:"#09090b", border:"1px solid var(--border)", borderTop:"2px solid #ef4444", borderRadius:"12px", padding:"24px" }}>
-                <div style={{ fontSize:"32px", fontFamily:"'Space Grotesk', monospace", fontWeight:700, color:"rgba(239,68,68,0.18)", lineHeight:1, marginBottom:"14px", letterSpacing:"-1px" }}>02</div>
+              <div style={{ background:"#09090b", border:"1px solid var(--border)", borderTop:"2px solid #c0392b", borderRadius:"12px", padding:"24px" }}>
+                <div style={{ fontSize:"32px", fontFamily:"'Space Grotesk', monospace", fontWeight:700, color:"rgba(192,57,43,0.18)", lineHeight:1, marginBottom:"14px", letterSpacing:"-1px" }}>02</div>
                 <div style={{ background:"#060608", border:"1px solid rgba(255,255,255,0.05)", borderRadius:"6px", padding:"11px 13px", fontFamily:"monospace", fontSize:"11px", marginBottom:"18px", lineHeight:1.85 }}>
                   <div style={{ color:"#818cf8" }}>shell_exec(cat /etc/passwd)</div>
                   <div style={{ color:"#555", fontSize:"10px" }}>↓ evaluating…</div>
-                  <div style={{ color:"#ef4444", fontWeight:700 }}>✗ blocked · credential access</div>
+                  <div style={{ color:"#c0392b", fontWeight:700 }}>blocked · credential access</div>
                   <div style={{ color:"#555", fontSize:"10px" }}>allowed: false — returned to agent</div>
                 </div>
                 <div style={{ fontSize:"15px", fontWeight:700, marginBottom:"8px", color:"var(--text-primary)" }}>Every action checked before it runs</div>
@@ -1145,7 +1145,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── INSTALL ──────────────────────────────────────────────────────── */}
-        <section style={{ borderTop:"1px solid var(--border)", padding:"64px 24px" }}>
+        <section id="install" style={{ borderTop:"1px solid var(--border)", padding:"64px 24px" }}>
           <div style={{ maxWidth:"500px", margin:"0 auto" }}>
             <p style={{ fontSize:"11px", fontFamily:"monospace", color:"var(--text-tertiary)", marginBottom:"14px", textTransform:"uppercase" as const, letterSpacing:"1px" }}>Get started</p>
             <h2 style={{ fontSize:"clamp(18px,3vw,24px)", fontWeight:700, marginBottom:"8px" }}>30 seconds.</h2>

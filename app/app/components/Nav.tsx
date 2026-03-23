@@ -37,46 +37,67 @@ export function Nav() {
           </span>
         </Link>
 
-        {/* Nav links */}
-        <nav style={{ display: "flex", gap: "2px", alignItems: "center" }}>
-          {([
-            ["/dashboard",   "Dashboard"],
-            ["/leaderboard", "Leaderboard"],
-          ] as [string, string][]).map(([href, label]) => (
-            <Link key={href} href={href} style={{
-              fontSize: "13px", textDecoration: "none",
-              padding: "6px 14px", borderRadius: "100px",
-              color: isActive(href) ? "#fff" : "rgba(255,255,255,0.45)",
-              fontWeight: isActive(href) ? 500 : 400,
-              background: isActive(href) ? "rgba(255,255,255,0.1)" : "transparent",
-              transition: "all 0.15s",
-            }}>
-              {label}
-            </Link>
-          ))}
-        </nav>
-
-        {/* Right side */}
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
-          {address ? (
-            <>
-              <span style={{ fontSize: "12px", fontFamily: "monospace", color: "rgba(255,255,255,0.6)", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", padding: "5px 10px", borderRadius: "100px" }}>
+        {address ? (
+          // ── Logged-in nav ──────────────────────────────────────────────────
+          <>
+            <nav style={{ display: "flex", gap: "2px", alignItems: "center" }}>
+              {([
+                ["/dashboard",   "Dashboard"],
+                ["/leaderboard", "Leaderboard"],
+              ] as [string, string][]).map(([href, label]) => (
+                <Link key={href} href={href} style={{
+                  fontSize: "13px", textDecoration: "none",
+                  padding: "6px 14px", borderRadius: "100px",
+                  color: isActive(href) ? "#fff" : "rgba(255,255,255,0.45)",
+                  fontWeight: isActive(href) ? 500 : 400,
+                  background: isActive(href) ? "rgba(255,255,255,0.1)" : "transparent",
+                  transition: "all 0.15s",
+                }}>
+                  {label}
+                </Link>
+              ))}
+            </nav>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+              <span style={{ fontSize: "12px", fontFamily: "monospace", color: "rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", padding: "5px 10px", borderRadius: "100px" }}>
                 {shortAddress}
               </span>
-              <button onClick={disconnect} style={{ background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "100px", padding: "5px 12px", fontSize: "12px", color: "rgba(255,255,255,0.4)", cursor: "pointer" }}>
+              <button onClick={disconnect} style={{ background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "100px", padding: "5px 12px", fontSize: "12px", color: "rgba(255,255,255,0.35)", cursor: "pointer", transition: "all 0.15s" }}>
                 Disconnect
               </button>
-            </>
-          ) : (
-            <button
-              onClick={connect}
-              disabled={isConnecting}
-              style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.25)", borderRadius: "100px", padding: "7px 16px", fontSize: "13px", fontWeight: 500, color: "rgba(255,255,255,0.7)", cursor: "pointer", opacity: isConnecting ? 0.7 : 1, transition: "all 0.15s" }}
-            >
-              {isConnecting ? "Connecting…" : "Connect Wallet"}
-            </button>
-          )}
-        </div>
+            </div>
+          </>
+        ) : (
+          // ── Logged-out nav ─────────────────────────────────────────────────
+          <>
+            <nav style={{ display: "flex", gap: "2px", alignItems: "center" }}>
+              {([
+                ["/#how-it-works", "How it works"],
+                ["/#install",      "Install"],
+                ["/leaderboard",   "Leaderboard"],
+              ] as [string, string][]).map(([href, label]) => (
+                <Link key={href} href={href} style={{
+                  fontSize: "13px", textDecoration: "none",
+                  padding: "6px 14px", borderRadius: "100px",
+                  color: "rgba(255,255,255,0.45)",
+                  fontWeight: 400,
+                  background: "transparent",
+                  transition: "all 0.15s",
+                }}>
+                  {label}
+                </Link>
+              ))}
+            </nav>
+            <div style={{ flexShrink: 0 }}>
+              <button
+                onClick={connect}
+                disabled={isConnecting}
+                style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.25)", borderRadius: "100px", padding: "7px 16px", fontSize: "13px", fontWeight: 500, color: "rgba(255,255,255,0.7)", cursor: "pointer", opacity: isConnecting ? 0.7 : 1, transition: "all 0.15s" }}
+              >
+                {isConnecting ? "Connecting…" : "Connect Wallet"}
+              </button>
+            </div>
+          </>
+        )}
       </header>
     </div>
   );

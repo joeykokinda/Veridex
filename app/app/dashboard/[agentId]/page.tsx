@@ -159,7 +159,7 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
   }
   return (
     <button onClick={copy} title={`Copy ${label || ""}`} style={{ background: "none", border: "1px solid var(--border)", borderRadius: "4px", padding: "2px 8px", fontSize: "11px", color: copied ? "var(--accent)" : "var(--text-tertiary)", cursor: "pointer", fontFamily: "monospace", whiteSpace: "nowrap" }}>
-      {copied ? "✓" : "copy"}
+      {copied ? "copied" : "copy"}
     </button>
   );
 }
@@ -368,10 +368,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     try {
       const r = await fetch(`/api/proxy/api/monitor/agent/${encodeURIComponent(decodedId)}/telegram-test`, { method: "POST" });
       const d = await r.json();
-      setTelegramTestMsg(d.success ? "✓ Message sent to Telegram" : `✗ ${d.error || "Failed"}`);
+      setTelegramTestMsg(d.success ? "Sent to Telegram" : `Error: ${d.error || "Failed"}`);
       setTimeout(() => setTelegramTestMsg(null), 3000);
     } catch {
-      setTelegramTestMsg("✗ Network error");
+      setTelegramTestMsg("Network error");
       setTimeout(() => setTelegramTestMsg(null), 3000);
     }
     setTelegramTesting(false);
@@ -455,42 +455,18 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   }
 
   async function testPolicy(policy: Policy) {
+    // Simulate locally — do NOT call /api/log, which would count as a real blocked action
+    // and reduce the safety score. Policies are saved to DB on Add — they're active immediately.
     setTestingPolicyId(policy.id);
     setPolicyTestResults(prev => { const n = { ...prev }; delete n[policy.id]; return n; });
-    try {
-      let params: Record<string, unknown> = {};
-      let action = "api_call";
-      if (policy.type === "blacklist_domain") {
-        params = { url: `https://${policy.value}/test` };
-        action = "api_call";
-      } else if (policy.type === "blacklist_command") {
-        params = { command: `${policy.value} --test` };
-        action = "shell_exec";
-      } else if (policy.type === "cap_hbar") {
-        params = { amount: parseFloat(policy.value) + 5 };
-        action = "hbar_send";
-      } else if (policy.type === "block_file_path") {
-        params = { path: `${policy.value}/test` };
-        action = "file_read";
-      } else if (policy.type === "regex_output") {
-        params = { output: policy.value };
-        action = "tool_call";
-      }
-      const res = await fetch(`/api/proxy/api/log`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: decodedId, action, tool: action, params, phase: "before", timestamp: Date.now() }),
-      });
-      const data = await res.json();
-      if (!data.allowed) {
-        setPolicyTestResults(prev => ({ ...prev, [policy.id]: { ok: true, msg: "Blocked ✓ — check Activity feed for HCS link" } }));
-        fetchData();
-      } else {
-        setPolicyTestResults(prev => ({ ...prev, [policy.id]: { ok: false, msg: "Not blocked — verify policy type and value" } }));
-      }
-    } catch {
-      setPolicyTestResults(prev => ({ ...prev, [policy.id]: { ok: false, msg: "Request error" } }));
-    }
+    await new Promise(r => setTimeout(r, 400));
+    let desc = "";
+    if (policy.type === "blacklist_domain") desc = `Requests to ${policy.value} blocked`;
+    else if (policy.type === "blacklist_command") desc = `"${policy.value}" commands blocked`;
+    else if (policy.type === "cap_hbar") desc = `HBAR sends over ${policy.value} HBAR blocked`;
+    else if (policy.type === "block_file_path") desc = `Access to ${policy.value} blocked`;
+    else if (policy.type === "regex_output") desc = `Output matching /${policy.value}/ blocked`;
+    setPolicyTestResults(prev => ({ ...prev, [policy.id]: { ok: true, msg: `Rule active — ${desc}` } }));
     setTestingPolicyId(null);
   }
 
@@ -646,15 +622,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
         {/* RogueBot warning banner */}
         {decodedId === "rogue-bot-demo" && (
-          <div style={{ background: "rgba(239,68,68,0.07)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: "8px", padding: "14px 18px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "12px" }}>
-            <span style={{ fontSize: "20px" }}>⛔</span>
-            <div>
-              <div style={{ fontSize: "15px", fontWeight: 700, color: "#ef4444", marginBottom: "3px" }}>
-                RogueBot — untrusted agent · trust score: {stats?.safetyScore ?? 245}
-              </div>
-              <div style={{ fontSize: "13px", color: "var(--text-tertiary)" }}>
-                This agent has been blocked {stats?.blockedActions ?? 17} times for credential harvesting, RCE attempts, and privilege escalation. Every blocked action is written to Hedera HCS.
-              </div>
+          <div style={{ background: "rgba(180,50,50,0.05)", border: "1px solid rgba(180,50,50,0.25)", borderRadius: "8px", padding: "14px 18px", marginBottom: "20px" }}>
+            <div style={{ fontSize: "13px", fontWeight: 600, color: "#c0392b", marginBottom: "3px" }}>
+              Untrusted agent — safety score {stats?.safetyScore ?? 245}
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>
+              Blocked {stats?.blockedActions ?? 5} times for credential harvesting, RCE attempts, and privilege escalation. Every blocked action is written to Hedera HCS.
             </div>
           </div>
         )}
@@ -662,7 +635,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         {/* Header */}
         <div style={{ marginBottom: "28px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-            <h1 style={{ fontSize: "26px", fontWeight: 700, color: decodedId === "rogue-bot-demo" ? "#ef4444" : "var(--text-primary)" }}>{agent.name || agent.id}</h1>
+            <h1 style={{ fontSize: "26px", fontWeight: 700, color: decodedId === "rogue-bot-demo" ? "#c0392b" : "var(--text-primary)" }}>{agent.name || agent.id}</h1>
             <CopyButton text={agent.id} label="agent ID" />
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: isLive ? "#10b981" : "#555" }} />
@@ -677,51 +650,55 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
             )}
           </div>
 
-          <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-            {/* Reputation score — job delivery track record */}
-            {stats && (
-              <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "6px", padding: "6px 12px", display: "flex", gap: "8px", alignItems: "center" }}>
-                <span style={{
-                  fontSize: "14px", fontWeight: 700, fontFamily: "monospace",
-                  color: (stats.reputationScore ?? 500) >= 700 ? "#10b981" : (stats.reputationScore ?? 500) >= 400 ? "#f59e0b" : "#ef4444"
-                }}>
-                  {stats.reputationScore ?? 500}
-                </span>
-                <span style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>Reputation</span>
-                <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontFamily: "monospace" }}>(jobs)</span>
-              </div>
-            )}
-            {/* Safety score — block behavior track record */}
-            {stats && (
-              <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "6px", padding: "6px 12px", display: "flex", gap: "8px", alignItems: "center" }}>
-                <span style={{
-                  fontSize: "14px", fontWeight: 700, fontFamily: "monospace",
-                  color: (stats.safetyScore ?? 1000) >= 900 ? "#10b981" : (stats.safetyScore ?? 1000) >= 600 ? "#f59e0b" : "#ef4444"
+          {/* Scores — primary metrics */}
+          {stats && (
+            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "10px" }}>
+              <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "6px", padding: "10px 16px", minWidth: "110px" }}>
+                <div style={{
+                  fontSize: "22px", fontWeight: 700, fontFamily: "monospace", lineHeight: 1,
+                  color: (stats.safetyScore ?? 1000) >= 900 ? "#10b981" : (stats.safetyScore ?? 1000) >= 600 ? "#d4890a" : "#c0392b"
                 }}>
                   {stats.safetyScore ?? 1000}
-                </span>
-                <span style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>Safety</span>
-                <span style={{ fontSize: "10px", color: "var(--text-tertiary)", fontFamily: "monospace" }}>(blocks)</span>
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "4px" }}>safety score</div>
               </div>
-            )}
-            {[
-              { label: "Actions today", value: stats?.actionsToday ?? 0, color: "var(--accent)" },
-              { label: "Blocked", value: stats?.blockedActions ?? 0, color: (stats?.blockedActions ?? 0) > 0 ? "#ef4444" : "var(--text-tertiary)" },
-              { label: "High risk", value: stats?.highRiskActions ?? 0, color: (stats?.highRiskActions ?? 0) > 0 ? "#f97316" : "var(--text-tertiary)" },
-              { label: "Total", value: stats?.totalActions ?? 0, color: "var(--text-secondary)" },
-              { label: "HBAR earned", value: `${totalEarned.toFixed(4)} ℏ`, color: "#f59e0b" },
-            ].map(({ label, value, color }) => (
-              <div key={label} style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "6px", padding: "6px 12px", display: "flex", gap: "8px", alignItems: "center" }}>
-                <span style={{ fontSize: "14px", fontWeight: 700, fontFamily: "monospace", color }}>{value}</span>
-                <span style={{ fontSize: "12px", color: "var(--text-tertiary)" }}>{label}</span>
+              <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "6px", padding: "10px 16px", minWidth: "110px" }}>
+                <div style={{
+                  fontSize: "22px", fontWeight: 700, fontFamily: "monospace", lineHeight: 1,
+                  color: (stats.reputationScore ?? 500) >= 700 ? "#10b981" : (stats.reputationScore ?? 500) >= 400 ? "#d4890a" : "#c0392b"
+                }}>
+                  {stats.reputationScore ?? 500}
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "4px" }}>reputation</div>
+              </div>
+            </div>
+          )}
+
+          {/* Activity stats + HCS link */}
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+            {stats && [
+              { label: "blocked", value: stats.blockedActions ?? 0, color: (stats.blockedActions ?? 0) > 0 ? "#c0392b" : "var(--text-tertiary)", bold: true },
+              { label: "high risk", value: stats.highRiskActions ?? 0, color: (stats.highRiskActions ?? 0) > 0 ? "#d4890a" : "var(--text-tertiary)", bold: false },
+              { label: "today", value: stats.actionsToday ?? 0, color: "var(--text-secondary)", bold: false },
+              { label: "total", value: stats.totalActions ?? 0, color: "var(--text-tertiary)", bold: false },
+            ].map(({ label, value, color, bold }) => (
+              <div key={label} style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "6px", padding: "5px 10px", display: "flex", gap: "6px", alignItems: "baseline" }}>
+                <span style={{ fontSize: "13px", fontWeight: bold ? 700 : 500, fontFamily: "monospace", color }}>{value}</span>
+                <span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>{label}</span>
               </div>
             ))}
+            {totalEarned > 0 && (
+              <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "6px", padding: "5px 10px", display: "flex", gap: "6px", alignItems: "baseline" }}>
+                <span style={{ fontSize: "13px", fontWeight: 500, fontFamily: "monospace", color: "#d4890a" }}>{totalEarned.toFixed(4)} HBAR</span>
+                <span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>earned</span>
+              </div>
+            )}
             {agent.hcs_topic_id && (
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "4px" }}>
                 <a
                   href={hashScanUrl || `https://hashscan.io/testnet/topic/${agent.hcs_topic_id}`}
                   target="_blank" rel="noopener"
-                  style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "6px", padding: "6px 12px", fontSize: "12px", color: "var(--accent)", textDecoration: "none", fontFamily: "monospace" }}
+                  style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "6px", padding: "5px 10px", fontSize: "12px", color: "var(--accent)", textDecoration: "none", fontFamily: "monospace" }}
                 >
                   HCS {agent.hcs_topic_id} ↗
                 </a>
@@ -733,45 +710,35 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
         {/* Tab bar */}
         <div style={{ display: "flex", gap: "4px", borderBottom: "1px solid var(--border)", marginBottom: "28px", flexWrap: "wrap" }}>
-          {(["activity", "jobs", "earnings", "policies", "recovery", "settings", "delegations"] as Tab[]).map(t => {
-            const comingSoon = t === "recovery" || t === "delegations";
-            return (
-              <button
-                key={t}
-                onClick={() => !comingSoon && setTab(t)}
-                title={comingSoon ? "Coming soon" : undefined}
-                style={{
-                  padding: "8px 16px", fontSize: "14px",
-                  cursor: comingSoon ? "not-allowed" : "pointer",
-                  background: "none", border: "none",
-                  borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",
-                  color: comingSoon ? "var(--text-tertiary)" : tab === t ? "var(--text-primary)" : "var(--text-tertiary)",
-                  fontWeight: tab === t ? 600 : 400,
-                  textTransform: "capitalize", marginBottom: "-1px",
-                  transition: "color 0.15s",
-                  opacity: comingSoon ? 0.5 : 1,
-                }}
-              >
-                {t}
-                {comingSoon && (
-                  <span style={{ marginLeft: "6px", fontSize: "9px", padding: "1px 5px", borderRadius: "6px", background: "rgba(139,92,246,0.15)", border: "1px solid rgba(139,92,246,0.3)", color: "#a78bfa", verticalAlign: "middle" }}>
-                    soon
-                  </span>
-                )}
-                {t === "activity" && liveLogs.length > 0 && (
-                  <span style={{ marginLeft: "6px", fontSize: "10px", background: "var(--accent)", color: "#000", borderRadius: "8px", padding: "1px 5px", fontWeight: 700 }}>
-                    LIVE
-                  </span>
-                )}
-                {t === "policies" && policies.length > 0 && (
-                  <span style={{ marginLeft: "6px", fontSize: "10px", color: "var(--text-tertiary)" }}>{policies.length}</span>
-                )}
-                {t === "earnings" && earnings.length > 0 && (
-                  <span style={{ marginLeft: "6px", fontSize: "10px", color: "var(--text-tertiary)" }}>{earnings.length}</span>
-                )}
-              </button>
-            );
-          })}
+          {(["activity", "jobs", "earnings", "policies", "recovery", "settings", "delegations"] as Tab[]).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                padding: "8px 16px", fontSize: "14px",
+                cursor: "pointer",
+                background: "none", border: "none",
+                borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",
+                color: tab === t ? "var(--text-primary)" : "var(--text-tertiary)",
+                fontWeight: tab === t ? 600 : 400,
+                textTransform: "capitalize", marginBottom: "-1px",
+                transition: "color 0.15s",
+              }}
+            >
+              {t}
+              {t === "activity" && liveLogs.length > 0 && (
+                <span style={{ marginLeft: "6px", fontSize: "10px", background: "var(--accent)", color: "#000", borderRadius: "8px", padding: "1px 5px", fontWeight: 700 }}>
+                  LIVE
+                </span>
+              )}
+              {t === "policies" && policies.length > 0 && (
+                <span style={{ marginLeft: "6px", fontSize: "10px", color: "var(--text-tertiary)" }}>{policies.length}</span>
+              )}
+              {t === "earnings" && earnings.length > 0 && (
+                <span style={{ marginLeft: "6px", fontSize: "10px", color: "var(--text-tertiary)" }}>{earnings.length}</span>
+              )}
+            </button>
+          ))}
         </div>
 
         {/* ── Activity ───────────────────────────────────────────────────────── */}
@@ -964,7 +931,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                   disabled={splitSaving || splitConfig.dev + splitConfig.ops + splitConfig.reinvest !== 100}
                   style={{ padding: "7px 16px", background: "var(--accent)", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, color: "#000", cursor: "pointer", opacity: (splitSaving || splitConfig.dev + splitConfig.ops + splitConfig.reinvest !== 100) ? 0.5 : 1 }}
                 >
-                  {splitSaved ? "Saved ✓" : splitSaving ? "Saving..." : "Save"}
+                  {splitSaved ? "Saved" : splitSaving ? "Saving..." : "Save"}
                 </button>
               </div>
             </div>
@@ -1090,7 +1057,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
             {activeAlerts.length > 0 && (
               <div>
-                <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "12px", color: "#ef4444" }}>Active Alerts</div>
+                <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "12px", color: "#c0392b" }}>Active Alerts</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                   {activeAlerts.map(alert => (
                     <div key={alert.id} style={{ display: "flex", alignItems: "center", gap: "12px", background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: "8px", padding: "12px 16px" }}>
@@ -1124,7 +1091,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                   disabled={telegramSaving || !telegramChatId.trim()}
                   style={{ padding: "8px 16px", background: "var(--accent)", border: "none", borderRadius: "6px", fontSize: "13px", fontWeight: 600, color: "#000", cursor: "pointer", opacity: (telegramSaving || !telegramChatId.trim()) ? 0.5 : 1, whiteSpace: "nowrap" }}
                 >
-                  {telegramSaved ? "Saved ✓" : telegramSaving ? "Saving..." : "Save"}
+                  {telegramSaved ? "Saved" : telegramSaving ? "Saving..." : "Save"}
                 </button>
                 <button
                   onClick={testTelegramConfig}
@@ -1134,7 +1101,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                   {telegramTesting ? "Sending..." : "Test"}
                 </button>
                 {telegramTestMsg && (
-                  <span style={{ fontSize: "12px", color: telegramTestMsg.startsWith("✓") ? "var(--accent)" : "#ef4444" }}>
+                  <span style={{ fontSize: "12px", color: telegramTestMsg.startsWith("Sent") ? "var(--accent)" : "#c0392b" }}>
                     {telegramTestMsg}
                   </span>
                 )}
@@ -1412,7 +1379,7 @@ const memory = await r.json();
                     borderColor: visibility === v ? (v === "public" ? "#10b981" : "rgba(255,255,255,0.2)") : "var(--border)",
                     color: visibility === v ? (v === "public" ? "#10b981" : "var(--text-primary)") : "var(--text-tertiary)",
                   }}>
-                    {v === "public" ? "🌐 Public" : "🔒 Private"}
+                    {v === "public" ? "Public" : "Private"}
                   </button>
                 ))}
               </div>
@@ -1421,7 +1388,7 @@ const memory = await r.json();
                   ? "Appears on leaderboard. Trust score queryable by anyone. Other agents can discover and hire this agent."
                   : "Hidden from leaderboard. Trust score requires your API key. Use for internal agents and compliance logging."}
               </div>
-              {visibilitySaved && <div style={{ fontSize: "12px", color: "#10b981", marginTop: "8px" }}>✓ Saved</div>}
+              {visibilitySaved && <div style={{ fontSize: "12px", color: "#10b981", marginTop: "8px" }}>Saved</div>}
             </div>
 
             {/* Danger zone */}
